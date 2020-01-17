@@ -27,7 +27,7 @@ public class LecarOO implements Policy.KeyOnlyPolicy {
 
     public LecarOO(Config config) {
         BasicSettings settings = new BasicSettings(config);
-        this.policyStats = new PolicyStats("adaptive.Lecar");
+        this.policyStats = new PolicyStats("adaptive.LecarOO");
         this.maximumSize = settings.maximumSize();
         this.data = new Long2ObjectOpenHashMap<>();
         this.headLru = new OldNode();
