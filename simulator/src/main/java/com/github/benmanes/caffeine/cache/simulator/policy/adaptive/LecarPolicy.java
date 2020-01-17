@@ -3,38 +3,46 @@ package com.github.benmanes.caffeine.cache.simulator.policy.adaptive;
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.FrequentlyUsedPolicy;
 import com.google.common.base.MoreObjects;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
+import java.util.LinkedHashMap;
+import java.util.Random;
+
 import static com.google.common.base.Preconditions.checkState;
 
-public class Lecar implements Policy.KeyOnlyPolicy {
+public class LecarPolicy implements Policy.KeyOnlyPolicy {
 
     private final Long2ObjectMap<Node> data;
     private final Node headLru;
-    private final Node headGru;
-    private final Node headGfu;
+    private final FrequencyNode freq0;
     private final PolicyStats policyStats;
     private final int maximumSize;
+    private final int partSize;
     private int sizeLru = 0;
     private int sizeLfu = 0;
     private int sizeGru = 0;
     private int sizeGfu = 0;
     private int p;
     private double[] w;
+    private double initialWeight;
+    private Random generator = new Random();
+    private LinkedHashMap<Long, Node> HLru;
+    private LinkedHashMap<Long, Node> HLfu;
 
-    public Lecar(Config config) {
+    public LecarPolicy(Config config) {
         BasicSettings settings = new BasicSettings(config);
-        this.policyStats = new PolicyStats("adaptive.Lecar");
+        this.policyStats = new PolicyStats("adaptive.lecar");
         this.maximumSize = settings.maximumSize();
+        this.partSize = maximumSize / 2;
         this.data = new Long2ObjectOpenHashMap<>();
-        this.w = new double[]{0.5, 0.5};
+        this.w = new double[]{initialWeight, 1.0 - initialWeight};
         this.headLru = new Node();
-        this.headGru = new Node();
-        this.headGfu = new Node();
+        this.freq0 = new FrequencyNode();
+        this.HLru = new LinkedHashMap<Long, Node>();
+        this.HLfu = new LinkedHashMap<Long, Node>();
     }
 
     @Override
@@ -46,8 +54,8 @@ public class Lecar implements Policy.KeyOnlyPolicy {
     public void finished() {
         checkState(sizeLru == data.values().stream().filter(node -> node.type == QueueType.LRU).count());
         checkState(sizeLfu == data.values().stream().filter(node -> node.type == QueueType.LFU).count());
-        checkState(sizeGru == data.values().stream().filter(node -> node.type == QueueType.GRU).count());
-        checkState(sizeGfu == data.values().stream().filter(node -> node.type == QueueType.GFU).count());
+        checkState(sizeGru == HLru.size());
+        checkState(sizeGfu == HLfu.size());
         checkState((sizeLru + sizeLfu) <= maximumSize);
         checkState((sizeGru + sizeGfu) <= maximumSize);
     }
@@ -58,42 +66,87 @@ public class Lecar implements Policy.KeyOnlyPolicy {
         Node node = data.get(key);
         if (node == null) {
             onMiss(key);
-        } else if (node.type == QueueType.LRU) {
-            onHitGru(node);
-        } else if (node.type == QueueType.LFU) {
-            onHitGfu(node);
         } else {
             onHit(node);
         }
     }
 
 
+    private QueueType pickCacheType() {
+        double randomChoice = generator.nextDouble();
+        if (randomChoice < w[0]) {
+            return QueueType.LRU;
+        } else {
+            return QueueType.LFU;
+        }
+    }
+
+    /**
+     * @param q            Node
+     * @param learningRate double
+     * @param discountRate double
+     */
+    private void updateWeights(Node q, double learningRate, double discountRate) {
+        long timeInGhost = 100; // diff now and time q in history
+        double regret = Math.pow(discountRate, timeInGhost);
+        if (q.type == QueueType.LRU) {
+            w[0] = w[0] * Math.exp(learningRate * regret);
+        } else {
+            w[1] = w[1] * Math.exp(learningRate * regret);
+        }
+        w[0] = w[0] / (w[0] + w[1]); // normalization
+        w[1] = 1 - w[0];
+    }
+
+
     private void onMiss(long key) {
         policyStats.recordMiss();
-
-        // select node type [LRU|LFU]
-        // check size of the cache to add it to
-        //
-        QueueType type = QueueType.LRU;
-        if (type == QueueType.LRU) {
-            Node node = new Node(key);
-            int leftSize = sizeLru + sizeGru;
-            // if LRU + ghost is full
-            if (leftSize == maximumSize) {
-                if (sizeLru < maximumSize) {
-                    Node victim = headGru.next;
-                    data.remove(victim.key);
-                    victim.remove();
-                    sizeGru--;
-
-                    evict(node);
-                }
-            }
-        } else {
-            int rightSize = sizeLfu + sizeGfu;
+        Node q = null;
+        boolean foundInHistory = false;
+        if (HLru.containsKey(key)) {
+            q = HLru.get(key);
+            HLru.remove(key);
+            foundInHistory = true;
+        } else if (HLfu.containsKey(key)) {
+            q = HLfu.get(key);
+            HLfu.remove(key);
+            foundInHistory = true;
         }
 
+        if (foundInHistory) {
+            double discountRate = 1.0;
+            double learningRate = 1.0;
+            updateWeights(q, learningRate, discountRate);
+        }
 
+        if (data.size() == maximumSize) {
+            QueueType type = pickCacheType();
+
+            if (type == QueueType.LRU) {
+                if (HLru.size() == partSize) {
+                    // make room in HLru
+                }
+                // delete LRU from cache since it's full
+                Node victim = headLru.next;
+                data.remove(victim.key);
+                victim.remove();
+                sizeLru--;
+                // add to HLru
+                HLru.put(victim.key, victim);
+                // add new LRU node
+                Node node = new Node(key);
+                node.type = QueueType.LRU;
+                data.put(key, node);
+                node.append(headLru);
+            } else {
+                if (HLfu.size() == partSize) {
+                    // make room in HLfu
+                }
+                // add to HLfu
+                // delete LFU from cache since it's full
+                // add new LFU node
+            }
+        }
     }
 
     private void onHit(Node node) {
@@ -132,6 +185,14 @@ public class Lecar implements Policy.KeyOnlyPolicy {
 
     }
 
+    private void evictEntry(Node node) {
+        data.remove(node.key);
+        node.remove();
+        if (node.freq.isEmpty()) {
+            node.freq.remove();
+        }
+    }
+
 
     /**
      * T1 = LRU
@@ -140,8 +201,8 @@ public class Lecar implements Policy.KeyOnlyPolicy {
      * B2 = Ghost LFU
      */
     private enum QueueType {
-        LRU, GRU,
-        LFU, GFU,
+        LRU,
+        LFU,
     }
 
     /**
