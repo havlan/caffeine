@@ -35,6 +35,7 @@ import com.github.benmanes.caffeine.cache.simulator.parser.gradle.GradleTraceRea
 import com.github.benmanes.caffeine.cache.simulator.parser.lirs.LirsTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.scarab.ScarabTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.snia.cambridge.CambridgeTraceReader;
+import com.github.benmanes.caffeine.cache.simulator.parser.lecar.FloridaWebTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.umass.network.YoutubeTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.umass.storage.StorageTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.wikipedia.WikipediaTraceReader;
@@ -51,62 +52,67 @@ import com.google.common.collect.Sets;
  */
 @SuppressWarnings("ImmutableEnumChecker")
 public enum TraceFormat {
-  ADDRESS(AddressTraceReader::new),
-  ADDRESS_PENALTIES(AddressPenaltiesTraceReader::new),
-  ADAPT_SIZE(AdaptSizeReader::new),
-  ARC(ArcTraceReader::new),
-  CACHE2K(Cache2kTraceReader::new),
-  CLIMB(ClimbTraceReader::new),
-  CORDA(CordaTraceReader::new),
-  GRADLE(GradleTraceReader::new),
-  LIRS(LirsTraceReader::new),
-  SCARAB(ScarabTraceReader::new),
-  SNIA_CAMBRIDGE(CambridgeTraceReader::new),
-  UMASS_STORAGE(StorageTraceReader::new),
-  UMASS_YOUTUBE(YoutubeTraceReader::new),
-  WIKIPEDIA(WikipediaTraceReader::new);
+    ADDRESS(AddressTraceReader::new),
+    ADDRESS_PENALTIES(AddressPenaltiesTraceReader::new),
+    ADAPT_SIZE(AdaptSizeReader::new),
+    ARC(ArcTraceReader::new),
+    CACHE2K(Cache2kTraceReader::new),
+    CLIMB(ClimbTraceReader::new),
+    CORDA(CordaTraceReader::new),
+    GRADLE(GradleTraceReader::new),
+    LIRS(LirsTraceReader::new),
+    SCARAB(ScarabTraceReader::new),
+    SNIA_CAMBRIDGE(CambridgeTraceReader::new),
+    LECAR(FloridaWebTraceReader::new),
+    UMASS_STORAGE(StorageTraceReader::new),
+    UMASS_YOUTUBE(YoutubeTraceReader::new),
+    WIKIPEDIA(WikipediaTraceReader::new);
 
-  private final Function<String, TraceReader> factory;
+    private final Function<String, TraceReader> factory;
 
-  TraceFormat(Function<String, TraceReader> factory) {
-    this.factory = factory;
-  }
+    TraceFormat(Function<String, TraceReader> factory) {
+        this.factory = factory;
+    }
 
-  /**
-   * Returns a new reader for streaming the events from the trace file.
-   *
-   * @param filePaths the path to the files in the trace's format
-   * @return a reader for streaming the events from the file
-   */
-  public TraceReader readFiles(List<String> filePaths) {
-    return new TraceReader() {
+    /**
+     * Returns a new reader for streaming the events from the trace file.
+     *
+     * @param filePaths the path to the files in the trace's format
+     * @return a reader for streaming the events from the file
+     */
+    public TraceReader readFiles(List<String> filePaths) {
+        return new TraceReader() {
 
-      @Override public Set<Characteristic> characteristics() {
-        return readers().stream()
-            .flatMap(reader -> reader.characteristics().stream())
-            .collect(Sets.toImmutableEnumSet());
-      }
+            @Override
+            public Set<Characteristic> characteristics() {
+                return readers().stream()
+                        .flatMap(reader -> reader.characteristics().stream())
+                        .collect(Sets.toImmutableEnumSet());
+            }
 
-      @Override public Stream<AccessEvent> events() throws IOException {
-        Stream<AccessEvent> events = Stream.empty();
-        for (TraceReader reader : readers()) {
-          events = Stream.concat(events, reader.events());
-        }
-        return events;
-      }
+            @Override
+            public Stream<AccessEvent> events() throws IOException {
+                Stream<AccessEvent> events = Stream.empty();
+                for (TraceReader reader : readers()) {
+                    events = Stream.concat(events, reader.events());
+                }
+                return events;
+            }
 
-      private List<TraceReader> readers() {
-        return filePaths.stream().map(path -> {
-          List<String> parts = Splitter.on(':').limit(2).splitToList(path);
-          TraceFormat format = (parts.size() == 1) ? TraceFormat.this : named(parts.get(0));
-          return format.factory.apply(Iterables.getLast(parts));
-        }).collect(toList());
-      }
-    };
-  }
+            private List<TraceReader> readers() {
+                return filePaths.stream().map(path -> {
+                    List<String> parts = Splitter.on(':').limit(2).splitToList(path);
+                    TraceFormat format = (parts.size() == 1) ? TraceFormat.this : named(parts.get(0));
+                    return format.factory.apply(Iterables.getLast(parts));
+                }).collect(toList());
+            }
+        };
+    }
 
-  /** Returns the format based on its configuration name. */
-  public static TraceFormat named(String name) {
-    return TraceFormat.valueOf(name.replace('-', '_').toUpperCase(US));
-  }
+    /**
+     * Returns the format based on its configuration name.
+     */
+    public static TraceFormat named(String name) {
+        return TraceFormat.valueOf(name.replace('-', '_').toUpperCase(US));
+    }
 }
