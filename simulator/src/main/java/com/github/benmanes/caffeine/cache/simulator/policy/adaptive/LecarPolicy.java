@@ -3,7 +3,6 @@ package com.github.benmanes.caffeine.cache.simulator.policy.adaptive;
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
-import com.github.benmanes.caffeine.cache.simulator.policy.linked.FrequentlyUsedPolicy;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
@@ -13,9 +12,10 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintWriter;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
+
 
 import static com.google.common.base.Preconditions.checkState;
 
@@ -27,6 +27,8 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     private final PolicyStats policyStats;
     private final int maximumSize;
     private final int partSize;
+    private final Node headGhostLru;
+    private final Node headGhostLfu;
     private int sizeLru = 0;
     private int sizeLfu = 0;
     private long discreteTime = 0L;
@@ -40,14 +42,15 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     }
 
     private double[] weights;
-    private Random generator = new Random();
+    private double[] prevWeights;
+    private Random generator;
     private LinkedHashMap<Long, Node> HLru;
     private LinkedHashMap<Long, Node> HLfu;
-    private final double discountRate = 0.45;
-    private final double learningRate;
+    private final double learningRate = 0.1;
+    private final double discountRate;
     private List<double[]> historicalWeights;
-    private double[][] historyWeights;
-    private int i = 0;
+    private int weightNotChangedFor = 0;
+    private boolean visualizeMode = false;
 
     public LecarPolicy(Config config) {
         BasicSettings settings = new BasicSettings(config);
@@ -57,19 +60,24 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         this.data = new Long2ObjectOpenHashMap<>();
         double initialWeight = 0.5;
         this.weights = new double[]{initialWeight, 1.0 - initialWeight};
+        this.prevWeights = this.weights;
+
         this.headLru = new Node();
         this.freq0 = new FrequencyNode();
-        this.learningRate = Math.pow(0.005, 1.0 / maximumSize);
+        this.headGhostLru = new Node();
+        this.headGhostLfu = new Node();
+
+        this.discountRate = Math.pow(0.005, 1.0 / maximumSize);
         System.out.printf("LeCaR with learning rate=%f and discount rate=%f%n", learningRate, discountRate);
         this.historicalWeights = new ArrayList<>();
-        //this.historyWeights = new double[settings.synthetic().events()][2];
-        this.HLru = new LinkedHashMap<Long, Node>() {
+        this.generator = new Random(settings.randomSeed());
+        this.HLru = new LinkedHashMap<Long, Node>(partSize, 0.75f, true) {
             @Override
             protected boolean removeEldestEntry(final Map.Entry eldest) {
                 return size() > partSize;
             }
         };
-        this.HLfu = new LinkedHashMap<Long, Node>() {
+        this.HLfu = new LinkedHashMap<Long, Node>(partSize, 0.75f, true) {
             @Override
             protected boolean removeEldestEntry(final Map.Entry eldest) {
                 return size() > partSize;
@@ -93,19 +101,32 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         System.out.printf("STATE: { Data size=%d, Current Node=%s, Weights=[%f, %f], sizeLru=%d, sizeLfu=%d, sizeHLru=%d, sizeHLfu=%d }\n", data.size(), node, weights[0], weights[1], sizeLru, sizeLfu, HLru.size(), HLfu.size());
     }
 
-    public void postCompletionFlushFile() {
-        try (PrintWriter writer = new PrintWriter(new File("weights.csv"))) {
+    public void postCompletionFlushFile() throws FileNotFoundException {
+        try (PrintWriter writer = new PrintWriter(new File("C:\\Users\\havar\\Home\\cache_simulation_results\\weights14.csv"))) {
             historicalWeights
                     .stream()
                     .map(this::weightsToCsv)
                     .forEach(writer::println);
         } catch (FileNotFoundException e) {
-            e.printStackTrace();
+            throw e;
+        }
+    }
+
+    // if weights are updated, we add them
+    public void updateWeightsForIteration() {
+        double[] weights = getWeights();
+        if (!Arrays.equals(weights, prevWeights)) {
+            //System.out.printf("Weights [%f, %f] were not equal to [%f, %f]%n", weights[0], weights[1], prevWeights[0], prevWeights[1]);
+            double[] weightsWithFrequency = {discreteTime, weights[0], weights[1], weightNotChangedFor};
+            historicalWeights.add(weightsWithFrequency);
+            weightNotChangedFor = 0;
+        } else {
+            weightNotChangedFor++;
         }
     }
 
     public String weightsToCsv(double[] w) {
-        return String.format("%f\t%f", w[0], w[1]);
+        return String.format("%d\t%f\t%f\t%f", (int) w[0], w[1], w[2], w[3]);
     }
 
     @Override
@@ -114,7 +135,13 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         checkState(sizeLru == data.values().stream().filter(node -> node.type == QueueType.LRU).count());
         checkState(sizeLfu == data.values().stream().filter(node -> node.type == QueueType.LFU).count());
         checkState((sizeLru + sizeLfu) <= maximumSize);
-        postCompletionFlushFile();
+        if (visualizeMode) {
+            try {
+                postCompletionFlushFile();
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     @Override
@@ -127,12 +154,11 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         } else {
             onHit(node);
         }
+        if (visualizeMode) {
+            updateWeightsForIteration();
+        }
         discreteTime++;
-        double[] weights = getWeights();
-        historicalWeights.add(weights);
-        //historyWeights[i][0] = weights[0];
-        //historyWeights[i][1] = weights[1];
-        i++;
+        //printState(node);
     }
 
 
@@ -153,16 +179,15 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     private void updateWeights(final Node q) {
         double regret = Math.pow(discountRate, discreteTime - q.historyStamp);
         double[] localWeights = getWeights();
-        double learningE = Math.exp(learningRate * regret);
-
+        this.prevWeights = Arrays.copyOf(localWeights, 2);
         // update opposite weight
         if (q.type == QueueType.LRU) {
-            localWeights[1] = localWeights[1] * learningE;//* Math.exp(learningRate * regret);
+            localWeights[1] = localWeights[1] * Math.exp(learningRate * regret);
         } else {
-            localWeights[0] = localWeights[0] * learningE;//*Math.exp(learningRate * regret);
+            localWeights[0] = localWeights[0] * Math.exp(learningRate * regret);
         }
-        //System.out.printf("Updating before norm[%f, %f] lE=%f, R=%f based on node=%s with time=%d%n", localWeights[0], localWeights[1], learningE, regret, q.toString(), discreteTime - q.historyStamp);
         localWeights[0] = localWeights[0] / (localWeights[0] + localWeights[1]); // normalization
+        localWeights[0] = BigDecimal.valueOf(localWeights[0]).setScale(4, RoundingMode.HALF_UP).doubleValue();
         localWeights[1] = 1.0 - localWeights[0];
         setWeights(localWeights);
     }
@@ -173,6 +198,8 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         policyStats.recordMiss();
         Node q = null;
         boolean foundInHistory = false;
+
+        // check if it's found in either of the ghost lists
         if (HLru.containsKey(key)) {
             q = HLru.get(key);
             HLru.remove(key);
@@ -183,10 +210,12 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
             foundInHistory = true;
         }
 
+        // if we found in history, adjust weights
         if (foundInHistory) {
             updateWeights(q);
         }
         QueueType type = pickCacheType();
+        //System.out.printf("Picking type %s based on weights [%f, %f]%n", type.toString(), getWeights()[0], getWeights()[1]);
         Node node;
         if (type == QueueType.LRU) {
             // add new LRU node
@@ -366,9 +395,6 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
                     .add("key", key)
                     .add("type", type.toString())
                     .add("time", historyStamp)
-                    .add("prev", prev != null)
-                    .add("next", next != null)
-                    .add("freq", freq != null)
                     .toString();
         }
     }
