@@ -31,6 +31,8 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     private final Node headGhostLfu;
     private int sizeLru = 0;
     private int sizeLfu = 0;
+    private int sizeGhostLru = 0;
+    private int sizeGhostLfu = 0;
     private long discreteTime = 0L;
 
     public double[] getWeights() {
@@ -44,13 +46,11 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     private double[] weights;
     private double[] prevWeights;
     private Random generator;
-    private LinkedHashMap<Long, Node> HLru;
-    private LinkedHashMap<Long, Node> HLfu;
     private final double learningRate = 0.1;
     private final double discountRate;
     private List<double[]> historicalWeights;
     private int weightNotChangedFor = 0;
-    private boolean visualizeMode = false;
+    private boolean visualizeMode = true;
 
     public LecarPolicy(Config config) {
         BasicSettings settings = new BasicSettings(config);
@@ -67,22 +67,10 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         this.headGhostLru = new Node();
         this.headGhostLfu = new Node();
 
-        this.discountRate = Math.pow(0.005, 1.0 / maximumSize);
+        this.discountRate = Math.pow(0.05, 1.0 / maximumSize);
         System.out.printf("LeCaR with learning rate=%f and discount rate=%f%n", learningRate, discountRate);
         this.historicalWeights = new ArrayList<>();
         this.generator = new Random(settings.randomSeed());
-        this.HLru = new LinkedHashMap<Long, Node>(partSize, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(final Map.Entry eldest) {
-                return size() > partSize;
-            }
-        };
-        this.HLfu = new LinkedHashMap<Long, Node>(partSize, 0.75f, true) {
-            @Override
-            protected boolean removeEldestEntry(final Map.Entry eldest) {
-                return size() > partSize;
-            }
-        };
     }
 
     /**
@@ -98,11 +86,11 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     }
 
     private void printState(Node node) {
-        System.out.printf("STATE: { Data size=%d, Current Node=%s, Weights=[%f, %f], sizeLru=%d, sizeLfu=%d, sizeHLru=%d, sizeHLfu=%d }\n", data.size(), node, weights[0], weights[1], sizeLru, sizeLfu, HLru.size(), HLfu.size());
+        System.out.printf("STATE: { Data size=%d, Current Node=%s, State Ok=%s Weights=[%f, %f], sizeLru=%d, sizeLfu=%d, sizeHLru=%d, sizeHLfu=%d }\n", data.size(), node, data.size() == (sizeGhostLfu + sizeGhostLru + sizeLru + sizeLfu), weights[0], weights[1], sizeLru, sizeLfu, sizeGhostLru, sizeGhostLfu);
     }
 
     public void postCompletionFlushFile() throws FileNotFoundException {
-        try (PrintWriter writer = new PrintWriter(new File("C:\\Users\\havar\\Home\\cache_simulation_results\\weights14.csv"))) {
+        try (PrintWriter writer = new PrintWriter(new File("C:\\Users\\havar\\Home\\cache_simulation_results\\weights15.csv"))) {
             historicalWeights
                     .stream()
                     .map(this::weightsToCsv)
@@ -131,9 +119,16 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
 
     @Override
     public void finished() {
-        System.out.printf("End state: { Data size=%d, SizeLru=%d, SizeLfu=%d, SizeHLru=%d, SizeHLfu=%d, Max=%d, Part=%d%n", data.size(), sizeLru, sizeLfu, HLru.size(), HLfu.size(), maximumSize, partSize);
+        System.out.printf("End state: { Weights= [%f, %f], Data size=%d, SizeLru=%d, SizeLfu=%d, SizeHLru=%d, SizeHLfu=%d, Max=%d, Part=%d%n", weights[0], weights[1], data.size(), sizeLru, sizeLfu, sizeGhostLru, sizeGhostLfu, maximumSize, partSize);
+        System.out.println("LRU SIZE: " + data.values().stream().filter(node -> node.type == QueueType.LRU).count());
+        System.out.println("LFU SIZE: " + data.values().stream().filter(node -> node.type == QueueType.LFU).count());
+        System.out.println("GRU SIZE: " + data.values().stream().filter(node -> node.type == QueueType.GRU).count());
+        System.out.println("GFU SIZE: " + data.values().stream().filter(node -> node.type == QueueType.GFU).count());
+
         checkState(sizeLru == data.values().stream().filter(node -> node.type == QueueType.LRU).count());
         checkState(sizeLfu == data.values().stream().filter(node -> node.type == QueueType.LFU).count());
+        checkState(sizeGhostLru == data.values().stream().filter(node -> node.type == QueueType.GRU).count());
+        checkState(sizeGhostLfu == data.values().stream().filter(node -> node.type == QueueType.GFU).count());
         checkState((sizeLru + sizeLfu) <= maximumSize);
         if (visualizeMode) {
             try {
@@ -150,15 +145,40 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         Node node = data.get(key);
         //printState(node);
         if (node == null) {
+            // if we miss
             onMiss(key);
+        } else if (node.type == QueueType.GRU || node.type == QueueType.GFU) {
+            // if we hit a ghost list
+            ohGhostHit(node);
         } else {
-            onHit(node);
+            // if we hit
+            onCacheHit(node);
         }
         if (visualizeMode) {
             updateWeightsForIteration();
         }
         discreteTime++;
         //printState(node);
+    }
+
+    private void ohGhostHit(Node q) {
+        policyStats.recordMiss();
+        boolean foundInHistory = false;
+        if (q.type == QueueType.GRU) {
+            q.remove(); // unlink
+            sizeGhostLru--;
+            foundInHistory = true;
+        } else if (q.type == QueueType.GFU) {
+            q.remove();
+            sizeGhostLfu--;
+            foundInHistory = true;
+        }
+
+        // if we found in history, adjust weights
+        if (foundInHistory) {
+            updateWeights(q);
+            addNodeFromGhost(q);
+        }
     }
 
 
@@ -192,82 +212,117 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         setWeights(localWeights);
     }
 
-
-    private void onMiss(long key) {
-        //System.out.printf("Miss on key=%d\n", key);
-        policyStats.recordMiss();
-        Node q = null;
-        boolean foundInHistory = false;
-
-        // check if it's found in either of the ghost lists
-        if (HLru.containsKey(key)) {
-            q = HLru.get(key);
-            HLru.remove(key);
-            foundInHistory = true;
-        } else if (HLfu.containsKey(key)) {
-            q = HLfu.get(key);
-            HLfu.remove(key);
-            foundInHistory = true;
-        }
-
-        // if we found in history, adjust weights
-        if (foundInHistory) {
-            updateWeights(q);
-        }
-        QueueType type = pickCacheType();
-        //System.out.printf("Picking type %s based on weights [%f, %f]%n", type.toString(), getWeights()[0], getWeights()[1]);
+    // called when a cache miss (not in ghost lists either) occurs
+    private Node addToCache(long key, QueueType type) {
         Node node;
         if (type == QueueType.LRU) {
-            // add new LRU node
-            if (foundInHistory) {
-                node = q;
-            } else {
-                node = new Node(key);
-            }
+            node = new Node(key);
             node.type = QueueType.LRU;
             data.put(key, node);
             node.append(headLru);
             sizeLru++;
-        } else {
-            // add new LFU node
+        } else if (type == QueueType.LFU) {
             FrequencyNode freq1 = (freq0.next.count == 1)
                     ? freq0.next
                     : new FrequencyNode(1, freq0);
-            if (foundInHistory) {
-                node = q;
-                node.freq = freq1;
-            } else {
-                node = new Node(key, freq1);
-            }
+            node = new Node(key, freq1);
             node.type = QueueType.LFU;
             data.put(key, node);
             node.append();
             sizeLfu++;
+        } else {
+            throw new IllegalArgumentException("Fuck!");
         }
+        return node;
+    }
 
-        // if the node we added results in a cache too large
+
+    // add an existing node from the ghost lists to the cache again
+    private void addNodeFromGhost(Node node) {
+        QueueType type = pickCacheType();
+        if (type == QueueType.LRU) {
+            node.type = QueueType.LRU;
+            node.append(headLru);
+            sizeLru++;
+        } else {
+            FrequencyNode freq1 = (freq0.next.count == 1)
+                    ? freq0.next
+                    : new FrequencyNode(1, freq0);
+            node.type = QueueType.LFU;
+            node.freq = freq1;
+            node.append();
+            sizeLfu++;
+        }
+        cleanupCache(type, node);
+        cleanupGhost(type);
+    }
+
+    private void cleanupCache(QueueType type, Node candidate) {
+        if (type == QueueType.LRU) {
+            cleanupCache();
+        } else {
+            cleanupCache(candidate);
+        }
+    }
+
+    // Only called from LRU parts
+    private void cleanupCache() {
         if (sizeLru + sizeLfu > maximumSize) {
-            if (type == QueueType.LRU) {
-                // delete LRU from cache since it's full
-                Node victim = headLru.next;
-                data.remove(victim.key);
-                victim.remove();
-                sizeLru--;
-                victim.historyStamp = (int) discreteTime;
-                HLru.put(victim.key, victim);
-            } else {
-                // delete LFU from cache since it's full, skip deleting the node we just added (from FrequentlyUsedPolicy)
-                Node victim = getNextVictim(node);
-                data.remove(victim.key);
-                victim.remove();
-                sizeLfu--;
-                if (victim.freq.isEmpty()) {
-                    victim.freq.remove();
-                }
-                victim.historyStamp = (int) discreteTime;
-                HLfu.put(victim.key, victim);
-            }
+            Node victim = headLru.next;
+            sizeLru--;
+            victim.remove();
+            victim.historyStamp = (int) discreteTime;
+            victim.type = QueueType.GRU;
+            victim.append(headGhostLru);
+            sizeGhostLru++;
             policyStats.recordEviction();
+        }
+    }
+
+    // Only called from LFU parts
+    private void cleanupCache(Node candidate) {
+        if (sizeLru + sizeLfu > maximumSize) {
+            Node victim = getNextVictim(candidate);
+            victim.remove();
+            sizeLfu--;
+            if (victim.freq.isEmpty()) {
+                victim.freq.remove();
+            }
+            victim.historyStamp = (int) discreteTime;
+            victim.type = QueueType.GFU;
+            victim.append(headGhostLfu);
+            sizeGhostLfu++;
+            policyStats.recordEviction();
+        }
+    }
+
+
+    private void onMiss(long key) {
+        policyStats.recordMiss();
+        QueueType type = pickCacheType();
+        //System.out.printf("Picking type %s based on weights [%f, %f]%n", type.toString(), getWeights()[0], getWeights()[1]);
+        Node node = addToCache(key, type);
+        cleanupCache(type, node);
+        cleanupGhost(type);
+    }
+
+    private void cleanupGhost(QueueType type) {
+        if (type == QueueType.LRU) {
+            if (sizeGhostLru > partSize) {
+                Node victim = headGhostLru.next;
+                data.remove(victim.key);
+                victim.remove();
+                sizeGhostLru--;
+            }
+        } else if (type == QueueType.LFU) {
+            if (sizeGhostLfu > partSize) {
+                Node victim = headGhostLfu.next;
+                data.remove(victim.key);
+                victim.remove();
+                sizeGhostLfu--;
+            }
+        } else {
+            throw new IllegalArgumentException("Wrong args to cleanup cache");
         }
     }
 
@@ -281,10 +336,8 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         return victim;
     }
 
-    private void onHit(Node node) {
+    private void onCacheHit(Node node) {
         policyStats.recordHit();
-        //System.out.printf("Hit on node=%s\n", node);
-        // if it's an LFU node
         if (node.type == QueueType.LFU) {
             int newCount = node.freq.count + 1;
             FrequencyNode freqN = (node.freq.next.count == newCount)
@@ -314,6 +367,8 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     private enum QueueType {
         LRU,
         LFU,
+        GRU,
+        GFU
     }
 
     /**
@@ -377,7 +432,7 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
          * Removes the node from the list.
          */
         public void remove() {
-            if (type == QueueType.LRU) {
+            if (type != QueueType.LFU) {
                 checkState(key != Long.MIN_VALUE);
                 prev.next = next;
                 next.prev = prev;
