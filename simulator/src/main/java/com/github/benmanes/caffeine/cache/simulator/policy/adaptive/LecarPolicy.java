@@ -102,7 +102,7 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     }
 
     public void postCompletionFlushFile() throws FileNotFoundException {
-        try (PrintWriter writer = new PrintWriter(new File("C:\\Users\\havar\\Home\\cache_simulation_results\\weights14.csv"))) {
+        try (PrintWriter writer = new PrintWriter(new File("C:\\Users\\havar\\Home\\cache_simulation_results\\weights20.csv"))) {
             historicalWeights
                     .stream()
                     .map(this::weightsToCsv)
