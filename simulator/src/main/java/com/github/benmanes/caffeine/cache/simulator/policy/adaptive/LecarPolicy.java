@@ -43,14 +43,20 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         this.weights = weights;
     }
 
+    public double[] slidingWindow = new double[10];
+
+
     private double[] weights;
     private double[] prevWeights;
     private Random generator;
-    private final double learningRate = 0.1;
-    private final double discountRate;
+    private final double defaultLearningRate = 0.3;
+    private double learningRate = defaultLearningRate;
+    private final double defaultDiscountRate;
+    private double discountRate;
     private List<double[]> historicalWeights;
     private int weightNotChangedFor = 0;
     private boolean visualizeMode = true;
+    private boolean discreTizeWeights = true;
 
     public LecarPolicy(Config config) {
         BasicSettings settings = new BasicSettings(config);
@@ -66,11 +72,15 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         this.freq0 = new FrequencyNode();
         this.headGhostLru = new Node();
         this.headGhostLfu = new Node();
+        this.historicalAnomalies = new ArrayList<>();
 
-        this.discountRate = Math.pow(0.05, 1.0 / maximumSize);
+        this.defaultDiscountRate = Math.pow(0.005, 1.0 / maximumSize);
+        this.discountRate = defaultDiscountRate;
         System.out.printf("LeCaR with learning rate=%f and discount rate=%f%n", learningRate, discountRate);
         this.historicalWeights = new ArrayList<>();
         this.generator = new Random(settings.randomSeed());
+
+        Arrays.fill(slidingWindow, 0.5);
     }
 
     /**
@@ -90,15 +100,28 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     }
 
     public void postCompletionFlushFile() throws FileNotFoundException {
-        try (PrintWriter writer = new PrintWriter(new File("C:\\Users\\havar\\Home\\cache_simulation_results\\weights15.csv"))) {
+        String baseFileName = "C:\\Users\\havar\\Home\\cache_simulation_results\\";
+        try (PrintWriter writer = new PrintWriter(new File(baseFileName + "scaled_w_01.csv"))) {
             historicalWeights
                     .stream()
-                    .map(this::weightsToCsv)
+                    .map(discreTizeWeights ? this::discreteWeightsToCsv : this::weightsToCsv)
                     .forEach(writer::println);
         } catch (FileNotFoundException e) {
             throw e;
         }
+
+        try (PrintWriter writer = new PrintWriter(new File(baseFileName + "scaled_a_01.csv"))) {
+            historicalAnomalies
+                    .stream()
+                    .map(item ->
+                            discreTizeWeights ?
+                                    String.format("%d\t%d", (int) item[0], (int) (10000 * item[1])) :
+                                    String.format("%d\t%f", (int) item[0], item[1]))
+                    .forEach(writer::println);
+        }
     }
+
+    long numWeightsAddedToFile = 0L;
 
     // if weights are updated, we add them
     public void updateWeightsForIteration() {
@@ -107,24 +130,33 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
             //System.out.printf("Weights [%f, %f] were not equal to [%f, %f]%n", weights[0], weights[1], prevWeights[0], prevWeights[1]);
             double[] weightsWithFrequency = {discreteTime, weights[0], weights[1], weightNotChangedFor};
             historicalWeights.add(weightsWithFrequency);
+            numWeightsAddedToFile++;
             weightNotChangedFor = 0;
         } else {
             weightNotChangedFor++;
         }
     }
 
+
+    /**
+     * @param w
+     * @return Formatted string with discrete timestamp, weights and frequency of those weights to reduce csv size
+     */
+    public String discreteWeightsToCsv(double[] w) {
+        return String.format("%d\t%d\t%d\t%d", (int) w[0], (int) (10_000 * w[1]), (int) (10_000 * w[2]), (int) w[3]);
+    }
+
+    /**
+     * @param w
+     * @return Formatted string with discrete timestamp, weights and frequency of those weights to reduce csv size
+     */
     public String weightsToCsv(double[] w) {
-        return String.format("%d\t%f\t%f\t%f", (int) w[0], w[1], w[2], w[3]);
+        return String.format("%d\t%f\t%f\t%d", (int) w[0], w[1], w[2], (int) w[3]);
     }
 
     @Override
     public void finished() {
-        System.out.printf("End state: { Weights= [%f, %f], Data size=%d, SizeLru=%d, SizeLfu=%d, SizeHLru=%d, SizeHLfu=%d, Max=%d, Part=%d%n", weights[0], weights[1], data.size(), sizeLru, sizeLfu, sizeGhostLru, sizeGhostLfu, maximumSize, partSize);
-        System.out.println("LRU SIZE: " + data.values().stream().filter(node -> node.type == QueueType.LRU).count());
-        System.out.println("LFU SIZE: " + data.values().stream().filter(node -> node.type == QueueType.LFU).count());
-        System.out.println("GRU SIZE: " + data.values().stream().filter(node -> node.type == QueueType.GRU).count());
-        System.out.println("GFU SIZE: " + data.values().stream().filter(node -> node.type == QueueType.GFU).count());
-
+        System.out.printf("END STATE {anomalies=%d, numToFile=%d}%n", numPseudoAnomalies, numWeightsAddedToFile);
         checkState(sizeLru == data.values().stream().filter(node -> node.type == QueueType.LRU).count());
         checkState(sizeLfu == data.values().stream().filter(node -> node.type == QueueType.LFU).count());
         checkState(sizeGhostLru == data.values().stream().filter(node -> node.type == QueueType.GRU).count());
@@ -134,7 +166,7 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
             try {
                 postCompletionFlushFile();
             } catch (FileNotFoundException e) {
-                e.printStackTrace();
+                System.out.println("Issues running postCompletionFlushFile with e=" + e.toString());
             }
         }
     }
@@ -143,7 +175,6 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     public void record(long key) {
         policyStats.recordOperation();
         Node node = data.get(key);
-        //printState(node);
         if (node == null) {
             // if we miss
             onMiss(key);
@@ -157,8 +188,42 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         if (visualizeMode) {
             updateWeightsForIteration();
         }
+        //checkSlidingWindow();
+        //updateAdaptivityState();
+
         discreteTime++;
-        //printState(node);
+    }
+
+    private void updateAdaptivityState() {
+        if (anomalyLastTen) {
+            learningRate = 1.0;
+        } else {
+            learningRate = defaultLearningRate;
+            discountRate = defaultDiscountRate;
+        }
+    }
+
+    long numPseudoAnomalies = 0L;
+
+    private List<double[]> historicalAnomalies;
+    boolean anomalyLastTen = false;
+
+    public void checkSlidingWindow() {
+        // update the siding window
+        double avgInWindow = Arrays.stream(slidingWindow).sum() / (slidingWindow.length + 0.0);
+        if (Math.abs(weights[0] - avgInWindow) > 0.075 && !anomalyLastTen) {
+            numPseudoAnomalies++;
+            historicalAnomalies.add(new double[]{discreteTime, weights[0]});
+            anomalyLastTen = true;
+        }
+
+        if (historicalAnomalies.size() > 0) {
+            // if the previos anomaly timestamp is less than 10 ago
+            if (discreteTime - (int) historicalAnomalies.get(historicalAnomalies.size() - 1)[0] >= 10) {
+                anomalyLastTen = false;
+            }
+        }
+        slidingWindow[(int) (discreteTime % slidingWindow.length)] = weights[0];
     }
 
     private void ohGhostHit(Node q) {
@@ -176,7 +241,7 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
 
         // if we found in history, adjust weights
         if (foundInHistory) {
-            updateWeights(q);
+            updateState(q);
             addNodeFromGhost(q);
         }
     }
@@ -196,14 +261,13 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     /**
      * @param q Node
      */
-    private void updateWeights(final Node q) {
+    private void updateState(final Node q) {
         double regret = Math.pow(discountRate, discreteTime - q.historyStamp);
         double[] localWeights = getWeights();
         this.prevWeights = Arrays.copyOf(localWeights, 2);
-        // update opposite weight
-        if (q.type == QueueType.LRU) {
+        if (q.type == QueueType.GRU) {
             localWeights[1] = localWeights[1] * Math.exp(learningRate * regret);
-        } else {
+        } else if (q.type == QueueType.GFU) {
             localWeights[0] = localWeights[0] * Math.exp(learningRate * regret);
         }
         localWeights[0] = localWeights[0] / (localWeights[0] + localWeights[1]); // normalization
@@ -260,7 +324,7 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     private void cleanupCache(QueueType type, Node candidate) {
         if (type == QueueType.LRU) {
             cleanupCache();
-        } else {
+        } else if (type == QueueType.LFU) {
             cleanupCache(candidate);
         }
     }
@@ -280,7 +344,7 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     }
 
     // Only called from LFU parts
-    private void cleanupCache(Node candidate) {
+    private void    cleanupCache(Node candidate) {
         if (sizeLru + sizeLfu > maximumSize) {
             Node victim = getNextVictim(candidate);
             victim.remove();
@@ -300,7 +364,6 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
     private void onMiss(long key) {
         policyStats.recordMiss();
         QueueType type = pickCacheType();
-        //System.out.printf("Picking type %s based on weights [%f, %f]%n", type.toString(), getWeights()[0], getWeights()[1]);
         Node node = addToCache(key, type);
         cleanupCache(type, node);
         cleanupGhost(type);
@@ -381,7 +444,7 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         FrequencyNode freq;
         Node prev;
         Node next;
-        int historyStamp = 0;
+        int historyStamp = 0; // discrete time when added to the cache
 
         Node() {
             this.key = Long.MIN_VALUE;
@@ -499,6 +562,14 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
                     .add("count", count)
                     .toString();
         }
+    }
+
+    static class Replayer {
+        private double[] discreteTimeEventsMarked;
+        private double[] oldWeights;
+        private double[] newWeights;
+        private int slidingWindowLength;
+
     }
 }
 
