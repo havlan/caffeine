@@ -81,11 +81,11 @@ Powering infrastructure near you:
 Download from [Maven Central][maven] or depend via Gradle:
 
 ```gradle
-compile 'com.github.ben-manes.caffeine:caffeine:2.8.0'
+compile 'com.github.ben-manes.caffeine:caffeine:2.8.1'
 
 // Optional extensions
-compile 'com.github.ben-manes.caffeine:guava:2.8.0'
-compile 'com.github.ben-manes.caffeine:jcache:2.8.0'
+compile 'com.github.ben-manes.caffeine:guava:2.8.1'
+compile 'com.github.ben-manes.caffeine:jcache:2.8.1'
 ```
 
 See the [release notes][releases] for details of the changes.
@@ -111,7 +111,7 @@ Snapshots of the development version are available in
 [jsr107]: https://github.com/ben-manes/caffeine/wiki/JCache
 [maven]: https://maven-badges.herokuapp.com/maven-central/com.github.ben-manes.caffeine/caffeine
 [releases]: https://github.com/ben-manes/caffeine/releases
-[snapshots]: https://oss.sonatype.org/content/repositories/snapshots
+[snapshots]: https://oss.sonatype.org/content/repositories/snapshots/com/github/ben-manes/caffeine/
 [efficiency]: https://github.com/ben-manes/caffeine/wiki/Efficiency
 [tinylfu]: https://dl.acm.org/authorize?N41277
 [adaptive-tinylfu]: https://dl.acm.org/authorize?N675830
