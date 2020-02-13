@@ -37,6 +37,7 @@ import com.github.benmanes.caffeine.cache.simulator.parser.scarab.ScarabTraceRea
 import com.github.benmanes.caffeine.cache.simulator.parser.snia.cambridge.CambridgeTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.lecar.FloridaWebTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.umass.network.YoutubeTraceReader;
+import com.github.benmanes.caffeine.cache.simulator.parser.umass.search.SearchTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.umass.storage.StorageTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.parser.wikipedia.WikipediaTraceReader;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
@@ -66,6 +67,7 @@ public enum TraceFormat {
     LECAR(FloridaWebTraceReader::new),
     UMASS_STORAGE(StorageTraceReader::new),
     UMASS_YOUTUBE(YoutubeTraceReader::new),
+    UMASS_SEARCH(SearchTraceReader::new),
     WIKIPEDIA(WikipediaTraceReader::new);
 
     private final Function<String, TraceReader> factory;
