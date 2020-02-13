@@ -32,6 +32,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic
 import com.github.benmanes.caffeine.cache.simulator.policy.adaptive.ArcPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.adaptive.CarPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.adaptive.CartPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.adaptive.LecarPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.irr.ClockProPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.irr.FrdPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.irr.HillClimberFrdPolicy;
@@ -172,6 +173,7 @@ public final class Registry {
     factories.put("adaptive.Arc", ArcPolicy::policies);
     factories.put("adaptive.Car", CarPolicy::policies);
     factories.put("adaptive.Cart", CartPolicy::policies);
+    factories.put("adaptive.Lecar", LecarPolicy::policies);
   }
 
   private static void registerProduct(Map<String, Function<Config, Set<Policy>>> factories) {
