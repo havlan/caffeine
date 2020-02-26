@@ -105,7 +105,6 @@ public enum TraceFormat {
                 return filePaths.stream().map(path -> {
                     List<String> parts = Splitter.on(':').limit(2).splitToList(path);
                     TraceFormat format = (parts.size() == 1) ? TraceFormat.this : named(parts.get(0));
-                    System.out.printf("Reading file %s%n", path);
                     return format.factory.apply(Iterables.getLast(parts));
                 }).collect(toList());
             }
