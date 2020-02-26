@@ -11,6 +11,7 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import smile.classification.DecisionTree;
+import smile.data.Tuple;
 
 import java.io.*;
 import java.math.BigDecimal;
@@ -18,7 +19,7 @@ import java.math.RoundingMode;
 import java.nio.charset.Charset;
 import java.util.*;
 
-
+import static com.github.benmanes.caffeine.cache.simulator.policy.HitRateCapturer.getDecisionTreeStructType;
 import static com.google.common.base.Preconditions.checkState;
 import static org.apache.commons.math3.special.Erf.erf;
 
@@ -649,7 +650,7 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
                 }
             } else {
                 if (decisionTree != null) {
-                    if (decisionTree.predict(new double[]{discreteTime, hitRate, wLru, wLfu, deltaHitRate, deltaLruWeight}) == 1) {
+                    if (decisionTree.predict(Tuple.of(new double[]{discreteTime, hitRate, wLru, wLfu, deltaHitRate, deltaLruWeight}, getDecisionTreeStructType())) == 1) {
                         numD3Boosts++;
                         return 0.9; // detected boost
                     } else {
