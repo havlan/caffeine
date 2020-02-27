@@ -29,6 +29,7 @@ dependencies {
   implementation libraries.elasticSearch
   implementation libraries.commonsCompress
   implementation libraries.univocityParsers
+  implementation libraries.smile
 
   testImplementation testLibraries.testng
 }

@@ -8,6 +8,8 @@ import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import smile.classification.DecisionTree;
+import smile.data.Tuple;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -16,7 +18,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
 
-
+import static com.github.benmanes.caffeine.cache.simulator.policy.HitRateCapturer.getDecisionTreeStructType;
 import static com.google.common.base.Preconditions.checkState;
 
 public class LecarPolicy implements Policy.KeyOnlyPolicy {
@@ -571,5 +573,220 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
         private int slidingWindowLength;
 
     }
+    
+    enum WindowType {
+        AVGWINDOW,
+        CHAUVENET,
+        HILLCLIMB
+        // The Welford’s algorithm
+        // The quartiles-based solution
+        // The z-score metric-based solution
+        // Half-Space Trees
+        // Local Outlier Factor
+        // Grubb test
+        // Tietjen y Moore
+    }
+
+    static class Adaptor {
+        public void setBaseFileName(String baseFileName) {
+            this.baseFileName = baseFileName;
+        }
+
+        // file utilities
+        protected String baseFileName;
+        private boolean discreTizeWeights = false;
+        private List<double[]> historicalAnomalies;
+        private long numAnomaliesFlagged = 0L;
+        private boolean visualizing = true;
+
+        private WindowType type;
+        // window attrs
+        private double[] slidingWindow;
+        private boolean currentWindowFlagged = false;
+        private double sumInWindow = 0.0;
+        private long lastFlaggedDiscreteTime = 0L;
+        private double criterion;
+        private double eps = 0.075;
+        boolean anomalyMode = false;
+        private DecisionTree decisionTree;
+
+
+        public Adaptor(String baseFileName) {
+            this.slidingWindow = new double[10];
+            this.historicalAnomalies = new ArrayList<>();
+            this.criterion = 1.0 / (2.0 * slidingWindow.length);
+            this.type = WindowType.AVGWINDOW;
+            this.baseFileName = baseFileName;
+            Arrays.fill(slidingWindow, 0.0);
+            readDecisionTreeFromFile();
+        }
+
+        public Adaptor(int size, String baseFileName) {
+            slidingWindow = new double[size];
+            this.historicalAnomalies = new ArrayList<>();
+            this.criterion = 1.0 / (2.0 * slidingWindow.length);
+            this.type = WindowType.AVGWINDOW;
+            this.baseFileName = baseFileName;
+            Arrays.fill(slidingWindow, 0.0);
+            readDecisionTreeFromFile();
+        }
+
+        void readDecisionTreeFromFile() {
+            System.out.printf("Trying to read file %s %n", baseFileName + "d3.model");
+            try (ObjectInputStream reader = new ObjectInputStream(new FileInputStream(baseFileName + "d3.model"))) {
+                this.decisionTree = (DecisionTree) reader.readObject();
+            } catch (IOException | ClassNotFoundException e) {
+                System.out.println("LecarPolicy.readDecisionTreeFromFile: " + e.toString());
+            }
+        }
+
+        public void setFileUtilsSettings(String baseFileName, boolean discreTizeWeights) {
+            this.baseFileName = baseFileName;
+            this.discreTizeWeights = discreTizeWeights;
+        }
+
+        public boolean getCurrentWindowFlagged() {
+            return currentWindowFlagged;
+        }
+
+        public long getNumAnomaliesFlagged() {
+            return numAnomaliesFlagged;
+        }
+
+        public void setType(WindowType type) {
+            switch (type) {
+                case CHAUVENET:
+                    break;
+                case AVGWINDOW:
+                    break;
+                case HILLCLIMB:
+                    break;
+            }
+            this.type = type;
+        }
+
+        public WindowType getType() {
+            return type;
+        }
+
+        private int numD3Boosts = 0;
+        private int numD3Chill = 0;
+
+        public double adapt(long discreteTime, double hitRate, double wLru, double wLfu, double deltaHitRate, double deltaLruWeight) {
+            if (anomalyMode) {
+                if (detectAnomalyInWindow(wLru, discreteTime)) {
+                    return 0.9;
+                } else {
+                    return 0.3;
+                }
+            } else {
+                if (decisionTree != null) {
+                    if (decisionTree.predict(Tuple.of(new double[]{discreteTime, hitRate, wLru, wLfu, deltaHitRate, deltaLruWeight}, getDecisionTreeStructType())) == 1) {
+                        numD3Boosts++;
+                        return 0.9; // detected boost
+                    } else {
+                        numD3Chill++;
+                        return 0.3;
+                    }
+                } else {
+                    return 0.3;
+                }
+            }
+        }
+
+        /**
+         * @param currentWeight
+         * @param discreteTime
+         * @return Husk at man må skille på oppdateringen som skjer når man bruker vektene i lecar og hitrate. Ikke "oppmuntre"
+         * en negativ endring i hit rate ved å endre lr.
+         */
+        public boolean detectAnomalyInWindow(double currentWeight, long discreteTime) {
+            if (!currentWindowFlagged) {
+
+                switch (type) {
+                    case CHAUVENET: {
+                        // 1. Calculate mean
+                        double avgInWindow = sumInWindow / (slidingWindow.length * 1.0);
+
+                        // 2. Calculate standard deviation
+                        double stdeviation = calculateStDeviation(avgInWindow);
+
+                        // 3. Calculate diffs from window
+                        double diff = Math.abs(currentWeight - avgInWindow) / stdeviation;
+
+                        // 4. Compare with nd
+                        //NormalDistribution normalDistribution = new NormalDistribution(avgInWindow, stdeviation);
+                        double prob = erf(diff);
+
+                        if (prob < criterion) {
+                            numAnomaliesFlagged++;
+                            currentWindowFlagged = true;
+                            lastFlaggedDiscreteTime = discreteTime;
+                        }
+                        break;
+                    }
+                    case AVGWINDOW: {
+                        double avgInWindow = sumInWindow / (slidingWindow.length * 1.0);
+                        if (Math.abs(currentWeight - avgInWindow) > eps) {
+                            currentWindowFlagged = true;
+                            numAnomaliesFlagged++;
+                            lastFlaggedDiscreteTime = discreteTime;
+                        }
+                        break;
+                    }
+                    case HILLCLIMB: {
+                        double prevWeight = 0.0;
+                        if (currentWeight > prevWeight) {
+                            currentWindowFlagged = true;
+                            numAnomaliesFlagged++;
+                            lastFlaggedDiscreteTime = discreteTime;
+                        }
+                        break;
+                    }
+                    default:
+                        break;
+
+                }
+                if (currentWindowFlagged) {
+                    if (visualizing) {
+                        historicalAnomalies.add(new double[]{discreteTime, currentWeight});
+                    }
+                }
+            } else {
+                // if the previos anomaly timestamp is less than 10 ago
+                if (discreteTime - lastFlaggedDiscreteTime >= slidingWindow.length) {
+                    currentWindowFlagged = false;
+                }
+            }
+            // update sum, add new weight, remove oldest from window.
+            sumInWindow = sumInWindow + currentWeight - slidingWindow[(int) (discreteTime % slidingWindow.length)];
+            slidingWindow[(int) (discreteTime % slidingWindow.length)] = currentWeight;
+            return currentWindowFlagged;
+        }
+
+        // std = sqrt(mean(abs(x - x.mean())**2))
+        private double calculateStDeviation(double mean) {
+            double runningSum = 0.0;
+            for (double v : slidingWindow) {
+                runningSum += Math.pow(Math.abs(v - mean), 2.0);
+            }
+            return Math.sqrt(runningSum / (slidingWindow.length * 1.0));
+        }
+
+        public void flushAnomaliesToFile(String filename) throws IOException {
+            System.out.printf("Writing anomalies to file=%s%n", filename);
+            try (PrintWriter writer = new PrintWriter(new File(baseFileName + filename + "a.csv"), Charset.defaultCharset())) {
+                historicalAnomalies
+                        .stream()
+                        .map(item ->
+                                discreTizeWeights ?
+                                        String.format("%d\t%d", (int) item[0], (int) (10000 * item[1])) :
+                                        String.format("%d\t%f", (int) item[0], item[1]))
+                        .forEach(writer::println);
+            }
+        }
+    }
+
+
 }
 
