@@ -15,15 +15,15 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy;
 
-import static com.github.benmanes.caffeine.cache.simulator.Simulator.Message.ERROR;
-import static com.github.benmanes.caffeine.cache.simulator.Simulator.Message.FINISH;
-import static java.util.Objects.requireNonNull;
-
-import java.util.List;
-
 import akka.actor.AbstractActor;
 import akka.dispatch.BoundedMessageQueueSemantics;
 import akka.dispatch.RequiresMessageQueue;
+
+import java.util.List;
+
+import static com.github.benmanes.caffeine.cache.simulator.Simulator.Message.ERROR;
+import static com.github.benmanes.caffeine.cache.simulator.Simulator.Message.FINISH;
+import static java.util.Objects.requireNonNull;
 
 /**
  * An actor that proxies to the page replacement policy.
@@ -36,6 +36,7 @@ public final class PolicyActor extends AbstractActor
 
   public PolicyActor(Policy policy) {
     this.policy = requireNonNull(policy);
+    System.out.printf("Policy=%s%n", policy.stats().name());
   }
 
   @Override

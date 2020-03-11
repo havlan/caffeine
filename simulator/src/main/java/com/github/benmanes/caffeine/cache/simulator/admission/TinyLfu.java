@@ -89,4 +89,9 @@ public final class TinyLfu implements Admittor {
     policyStats.recordRejection();
     return false;
   }
+
+    @Override
+    public boolean admit(long candidateKey, int candidateWeight, long victimKey, int victimWeight) {
+        return admit(candidateKey, victimKey);
+    }
 }

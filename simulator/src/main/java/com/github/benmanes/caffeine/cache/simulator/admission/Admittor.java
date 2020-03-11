@@ -25,33 +25,46 @@ package com.github.benmanes.caffeine.cache.simulator.admission;
  */
 public interface Admittor {
 
-  /** Records the access to the entry. */
-  void record(long key);
+    /**
+     * Records the access to the entry.
+     */
+    void record(long key);
 
-  /**
-   * Returns if the candidate should be added to the cache and the page replacement policy's chosen
-   * victim should be removed.
-   *
-   * @param candidateKey the key to the newly added entry
-   * @param victimKey the key to the entry the policy recommends removing
-   * @return if the candidate should be added and the victim removed due to eviction
-   */
-  boolean admit(long candidateKey, long victimKey);
+    /**
+     * Returns if the candidate should be added to the cache and the page replacement policy's chosen
+     * victim should be removed.
+     *
+     * @param candidateKey the key to the newly added entry
+     * @param victimKey    the key to the entry the policy recommends removing
+     * @return if the candidate should be added and the victim removed due to eviction
+     */
+    boolean admit(long candidateKey, long victimKey);
 
-  /** Returns an admittor that admits every candidate. */
-  static Admittor always() {
-    return AlwaysAdmit.INSTANCE;
-  }
+    boolean admit(long candidateKey, int candidateWeight, long victimKey, int victimWeight);
+
+    /**
+     * Returns an admittor that admits every candidate.
+     */
+    static Admittor always() {
+        return AlwaysAdmit.INSTANCE;
+    }
 }
 
 enum AlwaysAdmit implements Admittor {
-  INSTANCE;
+    INSTANCE;
 
-  @Override
-  public void record(long key) {}
+    @Override
+    public void record(long key) {
+    }
 
-  @Override
-  public boolean admit(long candidateKey, long victimKey) {
-    return true;
-  }
+    @Override
+    public boolean admit(long candidateKey, long victimKey) {
+        return true;
+    }
+
+    @Override
+    public boolean admit(long candidateKey, int candidateWeight, long victimKey, int victimWeight) {
+        return true;
+    }
+
 }

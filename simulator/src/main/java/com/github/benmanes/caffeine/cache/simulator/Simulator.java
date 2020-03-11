@@ -15,15 +15,13 @@
  */
 package com.github.benmanes.caffeine.cache.simulator;
 
-import static com.github.benmanes.caffeine.cache.simulator.Simulator.Message.ERROR;
-import static com.github.benmanes.caffeine.cache.simulator.Simulator.Message.FINISH;
-import static com.github.benmanes.caffeine.cache.simulator.Simulator.Message.START;
-import static java.util.stream.Collectors.toList;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.stream.Stream;
-
+import akka.actor.AbstractActor;
+import akka.actor.ActorRef;
+import akka.actor.Props;
+import akka.routing.ActorRefRoutee;
+import akka.routing.BroadcastRoutingLogic;
+import akka.routing.Routee;
+import akka.routing.Router;
 import com.github.benmanes.caffeine.cache.simulator.parser.TraceFormat;
 import com.github.benmanes.caffeine.cache.simulator.parser.TraceReader;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
@@ -35,13 +33,12 @@ import com.google.common.base.Stopwatch;
 import com.google.common.collect.Iterators;
 import com.typesafe.config.Config;
 
-import akka.actor.AbstractActor;
-import akka.actor.ActorRef;
-import akka.actor.Props;
-import akka.routing.ActorRefRoutee;
-import akka.routing.BroadcastRoutingLogic;
-import akka.routing.Routee;
-import akka.routing.Router;
+import java.io.IOException;
+import java.util.List;
+import java.util.stream.Stream;
+
+import static com.github.benmanes.caffeine.cache.simulator.Simulator.Message.*;
+import static java.util.stream.Collectors.toList;
 
 /**
  * A simulator that broadcasts the recorded cache events to each policy and generates an aggregated

@@ -15,13 +15,13 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.parser.umass.search;
 
+import com.github.benmanes.caffeine.cache.simulator.parser.TextTraceReader;
+import com.github.benmanes.caffeine.cache.simulator.parser.TraceReader;
+import com.google.common.math.IntMath;
+
 import java.io.IOException;
 import java.math.RoundingMode;
 import java.util.stream.LongStream;
-
-import com.github.benmanes.caffeine.cache.simulator.parser.TextTraceReader;
-import com.github.benmanes.caffeine.cache.simulator.parser.TraceReader.KeyOnlyTraceReader;
-import com.google.common.math.IntMath;
 
 /**
  * A reader for the trace files provided by the
@@ -29,12 +29,29 @@ import com.google.common.math.IntMath;
  *
  * @author ben.manes@gmail.com (Ben Manes)
  */
-public final class SearchTraceReader extends TextTraceReader implements KeyOnlyTraceReader {
+public final class SearchTraceReader extends TextTraceReader implements TraceReader.KeyOnlyTraceReader {
     static final int BLOCK_SIZE = 512;
 
     public SearchTraceReader(String filePath) {
         super(filePath);
     }
+
+    /*
+    @Override
+    public Set<Policy.Characteristic> characteristics() {
+        return Sets.immutableEnumSet(WEIGHTED);
+    }*/
+
+    /*
+    @Override
+    public Stream<AccessEvent> events() throws IOException {
+        return lines()
+                .map(line -> line.split(","))
+                .filter(line -> Character.toLowerCase(line[3].charAt(0)) != 'w')
+                .map(array -> AccessEvent.forKeyAndWeight(
+                        Long.parseLong(array[1]), IntMath.divide(Integer.parseInt(array[2]), BLOCK_SIZE, RoundingMode.UP)));
+    }*/
+
 
     @Override
     public LongStream keys() throws IOException {
