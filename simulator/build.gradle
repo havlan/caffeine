@@ -30,6 +30,7 @@ dependencies {
   implementation libraries.commonsCompress
   implementation libraries.univocityParsers
   implementation libraries.smile
+  implementation libraries.smilePlot
 
   testImplementation testLibraries.testng
 }
