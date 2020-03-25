@@ -29,6 +29,7 @@ public interface Admittor {
      * Records the access to the entry.
      */
     void record(long key);
+    void record(long key, int num);
 
     /**
      * Returns if the candidate should be added to the cache and the page replacement policy's chosen
@@ -55,6 +56,10 @@ enum AlwaysAdmit implements Admittor {
 
     @Override
     public void record(long key) {
+    }
+
+    @Override
+    public void record(long key, int num) {
     }
 
     @Override

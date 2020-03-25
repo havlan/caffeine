@@ -94,7 +94,7 @@ public class LecarPolicy implements Policy.KeyOnlyPolicy {
 
         this.learningRate = learningRate;
         this.discountRate = Math.pow(0.005, 1.0 / maximumSize);
-        System.out.printf("Lecar with maxSize=%d, LR=%f and DR=%f%n", maximumSize, learningRate, discountRate);
+        //System.out.printf("Lecar with maxSize=%d, LR=%f and DR=%f%n", maximumSize, learningRate, discountRate);
         this.historicalWeights = new ArrayList<>();
         this.generator = new Random(settings.randomSeed());
         this.adaptor = adaptor;

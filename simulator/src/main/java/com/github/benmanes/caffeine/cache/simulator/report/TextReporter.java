@@ -15,8 +15,9 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.report;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.Locale.US;
+import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
+import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.typesafe.config.Config;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,9 +27,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
-import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
-import com.typesafe.config.Config;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Locale.US;
 
 /**
  * A skeletal plain text implementation applicable for printing to the console or a file.
@@ -38,8 +38,11 @@ import com.typesafe.config.Config;
 public abstract class TextReporter implements Reporter {
   private static final String[] HEADERS = {
       "Policy", "Hit rate", "Hits", "Misses", "Requests", "Evictions",
-      "Admit rate", "Requests Weight", "Weighted Hit Rate", "Average Miss Penalty", 
-      "Average Penalty", "Steps", "Time"};
+      "Admit rate", "Requests weight", "Weighted hit rate", "Average miss penalty",
+      "Average penalty", "Steps", "Time"};
+  private static final String[] METAHEADERS = {
+          "File(s)", "Maximum-size", "Output file"
+  };
 
   private final List<PolicyStats> results;
   private final BasicSettings settings;
@@ -52,6 +55,9 @@ public abstract class TextReporter implements Reporter {
   /** Returns the column headers. */
   protected String[] headers() {
     return HEADERS.clone();
+  }
+  protected String[] getMetaheaders() {
+    return METAHEADERS.clone();
   }
 
   /** Adds the result of a policy simulation. */
@@ -66,15 +72,19 @@ public abstract class TextReporter implements Reporter {
     results.sort(comparator());
     String report = assemble(results);
     String output = settings.report().output();
+    String reportMetadata = assembleMetadata(settings);
     if (output.equalsIgnoreCase("console")) {
+      System.out.println(reportMetadata);
       System.out.println(report);
     } else {
+      Files.write(Paths.get(output + "_meta.txt"), reportMetadata.getBytes(UTF_8));
       Files.write(Paths.get(output), report.getBytes(UTF_8));
     }
   }
 
   /** Assembles an aggregated report. */
   protected abstract String assemble(List<PolicyStats> results);
+  protected abstract String assembleMetadata(BasicSettings settings);
 
   /** Returns a comparator that sorts by the specified column. */
   private Comparator<PolicyStats> comparator() {

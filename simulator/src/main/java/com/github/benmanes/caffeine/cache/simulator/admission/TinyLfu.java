@@ -77,6 +77,11 @@ public final class TinyLfu implements Admittor {
   }
 
   @Override
+  public void record(long key, int num) {
+    record(key);
+  }
+
+  @Override
   public boolean admit(long candidateKey, long victimKey) {
     sketch.reportMiss();
 

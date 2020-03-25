@@ -15,28 +15,25 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.linked;
 
-import static java.util.Locale.US;
-import static java.util.stream.Collectors.toSet;
-
-import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
-
-import java.util.Set;
-
-import org.apache.commons.lang3.StringUtils;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
+import com.github.benmanes.caffeine.cache.simulator.admission.TinyLfuBoostIncrement;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
-import com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.Sets;
 import com.typesafe.config.Config;
-
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import org.apache.commons.lang3.StringUtils;
+
+import java.util.Set;
+
+import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
+import static java.util.Locale.US;
+import static java.util.stream.Collectors.toSet;
 
 /**
  * A cache that uses a linked list, in either insertion or access order, to implement simple
@@ -73,20 +70,24 @@ public final class LinkedPolicy implements Policy {
 
   @Override
   public Set<Characteristic> characteristics() {
-    return Sets.immutableEnumSet(WEIGHTED);  
+    return Sets.immutableEnumSet(WEIGHTED);
   }
 
   @Override
   public PolicyStats stats() {
     return policyStats;
   }
-  
+
   @Override
   public void record(AccessEvent event) {
     final int weight = event.weight();
     final long key = event.key();
     Node old = data.get(key);
-    admittor.record(key);
+    if (!admittor.getClass().equals(TinyLfuBoostIncrement.class)){
+      admittor.record(key);
+    } else {
+      admittor.record(key, (int) Math.max(1, Math.log(event.weight()*1.0/ 512)));
+    }
     if (old == null) {
       policyStats.recordWeightedMiss(weight);
       if (weight > maximumSize) {
@@ -110,8 +111,8 @@ public final class LinkedPolicy implements Policy {
       while (currentSize > maximumSize) {
         Node victim = policy.findVictim(sentinel, policyStats);
         policyStats.recordEviction();
-  
-        boolean admit = admittor.admit(candidate.key, victim.key);
+
+        boolean admit = admittor.admit(candidate.key, candidate.weight, victim.key, victim.weight);
         if (admit) {
           evictEntry(victim);
         } else {

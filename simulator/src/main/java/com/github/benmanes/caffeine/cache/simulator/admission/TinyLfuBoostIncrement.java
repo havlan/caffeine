@@ -10,8 +10,10 @@ import com.github.benmanes.caffeine.cache.simulator.admission.perfect.PerfectFre
 import com.github.benmanes.caffeine.cache.simulator.admission.table.RandomRemovalFrequencyTable;
 import com.github.benmanes.caffeine.cache.simulator.admission.tinycache.TinyCacheAdapter;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
+import com.google.common.math.DoubleMath;
 import com.typesafe.config.Config;
 
+import java.math.RoundingMode;
 import java.util.Random;
 
 /*
@@ -35,12 +37,12 @@ import java.util.Random;
  *
  * @author havard.langdal@gmail.com (Håvard Langdal)
  */
-public final class TinyLfuCostMulti implements Admittor {
+public final class TinyLfuBoostIncrement implements Admittor {
     private final PolicyStats policyStats;
     private final Frequency sketch;
     private final Random random;
 
-    public TinyLfuCostMulti(Config config, PolicyStats policyStats) {
+    public TinyLfuBoostIncrement(Config config, PolicyStats policyStats) {
         this.policyStats = policyStats;
         this.sketch = makeSketch(config);
         BasicSettings settings = new BasicSettings(config);
@@ -85,23 +87,21 @@ public final class TinyLfuCostMulti implements Admittor {
 
     @Override
     public void record(long key, int num) {
-        record(key);
+        for (int i = 0; i <num ; i++) {
+            sketch.increment(key);
+        }
     }
+
 
     public boolean admit(long candidateKey, int candWeight, long victimKey, int victimWeight) {
         sketch.reportMiss();
 
         long candidateFreq = sketch.frequency(candidateKey);
-        //int candWeightScaled = DoubleMath.log2((candWeight * 1.0), RoundingMode.FLOOR);
-        int candWeightScaled = (int) Math.round(Math.log(candWeight * 1.0));
-        long candidateTotal = candidateFreq * Math.max(candWeightScaled, 1);
-
+        long candidateTotal = candidateFreq * DoubleMath.log2((candWeight * 1.0), RoundingMode.DOWN);
         long victimFreq = sketch.frequency(victimKey);
-        //int victimWeightScaled = DoubleMath.log2((victimWeight * 1.0), RoundingMode.FLOOR);
-        int victimWeightScaled = (int) Math.round(Math.log(victimFreq * 1.0));
-        long victimTotal = victimFreq * Math.max(victimWeightScaled, 1);
+        long victimTotal = victimFreq * DoubleMath.log2((victimWeight * 1.0), RoundingMode.DOWN);
 
-        if (candidateFreq * candWeight > victimFreq * victimWeight) {
+        if (candidateFreq > victimFreq) {
             policyStats.recordAdmission();
             return true;
         }

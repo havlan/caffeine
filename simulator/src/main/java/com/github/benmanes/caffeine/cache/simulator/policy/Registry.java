@@ -21,6 +21,7 @@ import com.github.benmanes.caffeine.cache.simulator.policy.adaptive.ArcPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.adaptive.CarPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.adaptive.CartPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.adaptive.Lecar.LecarPolicy;
+import com.github.benmanes.caffeine.cache.simulator.policy.adaptive.LecarPlain;
 import com.github.benmanes.caffeine.cache.simulator.policy.irr.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.linked.*;
 import com.github.benmanes.caffeine.cache.simulator.policy.opt.ClairvoyantPolicy;
@@ -87,7 +88,11 @@ public final class Registry {
     public static Set<Policy> policies(BasicSettings settings, Set<Characteristic> characteristics) {
         return settings.policies().stream()
                 .flatMap(name -> policy(settings, name).stream())
-                .filter(policy -> policy.characteristics().containsAll(characteristics))
+                .filter(policy -> {
+                    boolean flag = policy.characteristics().containsAll(characteristics);
+                    System.out.printf("Policy %s contains all characteristics=%s%n", policy.stats().name(), flag);
+                    return flag;
+                })
                 .collect(toSet());
     }
 
@@ -113,6 +118,10 @@ public final class Registry {
         Stream.of(FrequentlyUsedPolicy.EvictionPolicy.values()).forEach(priority -> {
             String id = "linked." + priority.name();
             factories.put(id, config -> FrequentlyUsedPolicy.policies(config, priority));
+        });
+        Stream.of(LfuHeap.AgingPolicy.values()).forEach(policy -> {
+            String id = "heap." + policy.name();
+            factories.put(id, config -> LfuHeap.policies(config, policy));
         });
         factories.put("linked.SegmentedLru", SegmentedLruPolicy::policies);
         factories.put("linked.Multiqueue", MultiQueuePolicy::policies);
@@ -166,6 +175,7 @@ public final class Registry {
         factories.put("adaptive.Car", CarPolicy::policies);
         factories.put("adaptive.Cart", CartPolicy::policies);
         factories.put("adaptive.Lecar", LecarPolicy::policies);
+        factories.put("adaptive.LecarPure", LecarPlain::policies);
     }
 
     private static void registerProduct(Map<String, Function<Config, Set<Policy>>> factories) {

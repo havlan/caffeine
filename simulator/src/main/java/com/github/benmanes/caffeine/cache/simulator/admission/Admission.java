@@ -30,7 +30,11 @@ import java.util.function.Function;
 public enum Admission {
   ALWAYS((config, policyStats) -> Admittor.always(), Function.identity()),
   TINYLFU(TinyLfu::new, name -> name + "_TinyLfu"),
-  TINYLFUCOSTMULTI(TinyLfuCostMulti::new, name -> name + "_TinyLfuCostMulti");
+  TINYLFUCOSTMULTI(TinyLfuCostMulti::new, name -> name + "_TinyLfuMulti"),
+  TINYLFUBOOSTINCREMENT(TinyLfuBoostIncrement::new, name -> name + "_TinyLfuBoost"),
+  COMPARISONADMITTOR(ComparisonAdmittor::new, name -> name + "_Comparison"),
+  THRESHOLDADMITTOR(ThresholdAdmittor::new, name -> name + "_Threshold"),
+  SECONDARYADMITTOR(SecondaryAdmittor::new, name -> name + "_Secondary");
 
   private final BiFunction<Config, PolicyStats, Admittor> factory;
   private final Function<String, String> formatter;

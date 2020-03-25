@@ -101,7 +101,7 @@ class Adaptor {
     }
 
     void readDecisionTreeFromFile() {
-        System.out.printf("Trying to read file %s %n", baseFileName + "d3.model");
+        //System.out.printf("Trying to read file %s %n", baseFileName + "d3.model");
         try (ObjectInputStream reader = new ObjectInputStream(new FileInputStream(baseFileName + "d3.model"))) {
             this.decisionTree = (DecisionTree) reader.readObject();
         } catch (IOException | ClassNotFoundException e) {

@@ -19,14 +19,12 @@ import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
-import com.github.benmanes.caffeine.cache.simulator.policy.adaptive.Lecar.HitRateCapturer;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 
-import java.io.IOException;
 import java.util.Set;
 
 import static com.google.common.base.Preconditions.checkState;
@@ -73,8 +71,6 @@ public final class ArcPolicy implements KeyOnlyPolicy {
     private int sizeB1;
     private int sizeB2;
     private int p;
-    private final String baseDirectoryName = "C:\\Users\\havar\\Home\\cache_simulation_results\\";
-    HitRateCapturer capturer;
     private long discreteTime = 0L;
 
     public ArcPolicy(Config config) {
@@ -86,7 +82,6 @@ public final class ArcPolicy implements KeyOnlyPolicy {
         this.headT2 = new Node();
         this.headB1 = new Node();
         this.headB2 = new Node();
-        this.capturer = new HitRateCapturer(baseDirectoryName);
     }
 
     /**
@@ -109,7 +104,6 @@ public final class ArcPolicy implements KeyOnlyPolicy {
         } else {
             onHit(node);
         }
-        capturer.captureHitRatio(policyStats.hitRate(), discreteTime, 0.0, 0.0);
         discreteTime++;
     }
 
@@ -243,11 +237,6 @@ public final class ArcPolicy implements KeyOnlyPolicy {
         checkState(sizeB2 == data.values().stream().filter(node -> node.type == QueueType.B2).count());
         checkState((sizeT1 + sizeT2) <= maximumSize);
         checkState((sizeB1 + sizeB2) <= maximumSize);
-        try {
-            capturer.flushHitRatesToFile("arc" + "_r");
-        } catch (IOException e) {
-            System.out.println("ArcPolicy.finished" + e.toString());
-        }
     }
 
     private enum QueueType {

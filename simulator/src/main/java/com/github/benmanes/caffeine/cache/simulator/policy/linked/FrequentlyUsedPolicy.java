@@ -18,6 +18,7 @@ package com.github.benmanes.caffeine.cache.simulator.policy.linked;
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
+import com.github.benmanes.caffeine.cache.simulator.admission.TinyLfuBoostIncrement;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
@@ -48,7 +49,7 @@ public final class FrequentlyUsedPolicy implements Policy {
     final FrequencyNode freq0;
     final Admittor admittor;
     final int maximumSize;
-    int currentSize;
+    int currentWeightedSize;
 
 
     public FrequentlyUsedPolicy(Admission admission, EvictionPolicy policy, Config config) {
@@ -59,7 +60,8 @@ public final class FrequentlyUsedPolicy implements Policy {
         this.maximumSize = settings.maximumSize();
         this.policy = requireNonNull(policy);
         this.freq0 = new FrequencyNode();
-        this.currentSize = 0;
+        this.currentWeightedSize = 0;
+        System.out.printf("FrequentlyUsedPolicy with policy=%s and admittor=%s%n", policy.toString(), admittor.toString());
     }
 
     /**
@@ -77,17 +79,26 @@ public final class FrequentlyUsedPolicy implements Policy {
         return Sets.immutableEnumSet(WEIGHTED);
     }
 
-
+    int i=0;
     @Override
     public void record(AccessEvent event) {
         policyStats.recordOperation();
         final long key = event.key();
         Node node = data.get(key);
-        admittor.record(key);
+        //System.out.printf("Key %d, weight %d%n", event.key(), event.weight());
+        if (!admittor.getClass().equals(TinyLfuBoostIncrement.class)) {
+            admittor.record(key);
+        } else {
+            admittor.record(key, (int) Math.max(1, Math.log(event.weight() * 1.0 / 512)));
+        }
         if (node == null) {
             onMiss(event);
         } else {
-            onHit(node, event.weight());
+            if (this.policy != EvictionPolicy.LFUCOSTBOOST) {
+                onHit(node, event.weight());
+            } else {
+                onHit(node, event.weight(), (int) Math.max(1, Math.log(event.weight() * 1.0 / 512)));
+            }
         }
     }
 
@@ -114,7 +125,6 @@ public final class FrequentlyUsedPolicy implements Policy {
      */
     private void onHit(Node node, int weight) {
         policyStats.recordWeightedHit(weight);
-
         int newCount = node.freq.count + 1;
         FrequencyNode freqN = (node.freq.next.count == newCount)
                 ? node.freq.next
@@ -127,10 +137,52 @@ public final class FrequentlyUsedPolicy implements Policy {
         node.append();
     }
 
+    private void onHit(Node node, int weight, int number) {
+        if (this.policy != EvictionPolicy.LFUCOSTBOOST) {
+            System.out.println("FrequentlyUsedPolicy.onHit wrong invocation");
+            onHit(node, weight);
+            return;
+        }
+        policyStats.recordWeightedHit(weight);
+        int newCount = node.freq.count + number;
+        FrequencyNode freqN = null;
+        if (number != 1) {
+            FrequencyNode tmpFN = node.freq;
+            for (int i = 0; i < number; i++) {
+                if (tmpFN.next.count == newCount) {
+                    // if the next node exist in chain
+                    freqN = node.freq.next;
+                    break;
+                } else if (tmpFN.next.count > newCount) {
+                    // if we need to create a new node somewhere
+                    freqN = new FrequencyNode(newCount, tmpFN);
+                    break;
+                } else {
+                    tmpFN = tmpFN.next;
+                }
+            }
+            if (freqN == null) {
+                freqN = new FrequencyNode(newCount, node.freq);
+            }
+        } else {
+            freqN = (node.freq.next.count == newCount)
+                    ? node.freq.next
+                    : new FrequencyNode(newCount, node.freq);
+        }
+        node.remove();
+        if (node.freq.isEmpty()) {
+            node.freq.remove();
+        }
+        node.freq = freqN;
+        node.append();
+
+    }
+
     /**
      * Adds the entry, creating an initial frequency list of 1 if necessary, and evicts if needed.
      */
     private void onMiss(AccessEvent event) {
+        policyStats.recordWeightedMiss(event.weight());
         if (event.weight() > maximumSize) {
             policyStats.recordOperation();
             return;
@@ -142,9 +194,8 @@ public final class FrequentlyUsedPolicy implements Policy {
                 : new FrequencyNode(1, freq0);
         Node node = new Node(key, event.weight(), freq1);
         //policyStats.recordMiss();
-        policyStats.recordWeightedMiss(event.weight());
         //System.out.printf("Added with weight %d%n", event.weight());
-        currentSize += event.weight();
+        currentWeightedSize += event.weight();
         data.put(key, node);
         node.append();
         evict(node);
@@ -154,8 +205,8 @@ public final class FrequentlyUsedPolicy implements Policy {
      * Evicts while the map exceeds the maximum capacity.
      */
     private void evict(Node candidate) {
-        if (currentSize > maximumSize) {
-            while (currentSize > maximumSize) {
+        if (currentWeightedSize > maximumSize) {
+            while (currentWeightedSize > maximumSize) {
                 Node victim = nextVictim(candidate);
                 boolean admit = admittor.admit(candidate.key, candidate.weight, victim.key, victim.weight);
                 if (admit) {
@@ -195,7 +246,7 @@ public final class FrequentlyUsedPolicy implements Policy {
      * Removes the entry.
      */
     private void evictEntry(Node node) {
-        currentSize -= node.weight;
+        currentWeightedSize -= node.weight;
         data.remove(node.key);
         node.remove();
         if (node.freq.isEmpty()) {
@@ -204,7 +255,7 @@ public final class FrequentlyUsedPolicy implements Policy {
     }
 
     public enum EvictionPolicy {
-        LFU, MFU;
+        LFU, MFU, LFUCOSTBOOST;
 
         public String label() {
             return StringUtils.capitalize(name().toLowerCase(US));
@@ -268,7 +319,6 @@ public final class FrequentlyUsedPolicy implements Policy {
         Node prev;
         Node next;
         int weight;
-
         public Node(FrequencyNode freq) {
             this.key = Long.MIN_VALUE;
             this.freq = freq;

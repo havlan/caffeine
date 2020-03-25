@@ -15,11 +15,12 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.report;
 
-import java.util.List;
-
+import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.jakewharton.fliptables.FlipTable;
 import com.typesafe.config.Config;
+
+import java.util.List;
 
 /**
  * A plain text report that pretty-prints to a table.
@@ -56,6 +57,13 @@ public final class TableReporter extends TextReporter {
       };
     }
     return FlipTable.of(headers(), data);
+  }
+
+  @Override
+  protected String assembleMetadata(BasicSettings settings) {
+    return String.format("Output file: %s%n", settings.report().output()) +
+            String.format("Maximum size: %d%n", settings.maximumSize()) +
+            String.format("File(s): %s%n", settings.traceFiles().paths().toString());
   }
 
   private static String steps(PolicyStats policyStats) {

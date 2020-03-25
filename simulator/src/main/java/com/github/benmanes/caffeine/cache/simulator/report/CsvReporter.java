@@ -15,14 +15,15 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.report;
 
-import java.io.StringWriter;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-
+import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.typesafe.config.Config;
 import com.univocity.parsers.csv.CsvWriter;
 import com.univocity.parsers.csv.CsvWriterSettings;
+
+import java.io.StringWriter;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A plain text report that prints comma-separated values.
@@ -60,5 +61,11 @@ public final class CsvReporter extends TextReporter {
     }
     writer.close();
     return output.toString();
+  }
+  @Override
+  protected String assembleMetadata(BasicSettings settings) {
+    return String.format("Output file: %s%n", settings.report().output()) +
+            String.format("Maximum size: %d%n", settings.maximumSize()) +
+            String.format("File(s): %s%n", settings.traceFiles().paths().toString());
   }
 }

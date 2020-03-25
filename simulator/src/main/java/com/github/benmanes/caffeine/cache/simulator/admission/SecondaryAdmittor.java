@@ -12,39 +12,20 @@ import com.github.benmanes.caffeine.cache.simulator.admission.tinycache.TinyCach
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.typesafe.config.Config;
 
-import java.util.Random;
+public class SecondaryAdmittor implements Admittor {
 
-/*
- * Copyright 2015 Ben Manes. All Rights Reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
-/**
- * Admits new entries based on the estimated frequency of its historic use.
- *
- * @author havard.langdal@gmail.com (Håvard Langdal)
- */
-public final class TinyLfuCostMulti implements Admittor {
+    private final BasicSettings settings;
     private final PolicyStats policyStats;
     private final Frequency sketch;
-    private final Random random;
 
-    public TinyLfuCostMulti(Config config, PolicyStats policyStats) {
+    public SecondaryAdmittor(Config config, PolicyStats policyStats) {
+        this.settings = new BasicSettings(config);
         this.policyStats = policyStats;
         this.sketch = makeSketch(config);
-        BasicSettings settings = new BasicSettings(config);
-        this.random = new Random(settings.randomSeed());
+    }
+
+    public int frequency(long key) {
+        return sketch.frequency(key);
     }
 
     private Frequency makeSketch(Config config) {
@@ -73,11 +54,6 @@ public final class TinyLfuCostMulti implements Admittor {
         throw new IllegalStateException("Unknown sketch type: " + type);
     }
 
-    public int frequency(long key) {
-        return sketch.frequency(key);
-    }
-
-
     @Override
     public void record(long key) {
         sketch.increment(key);
@@ -88,34 +64,21 @@ public final class TinyLfuCostMulti implements Admittor {
         record(key);
     }
 
-    public boolean admit(long candidateKey, int candWeight, long victimKey, int victimWeight) {
-        sketch.reportMiss();
-
-        long candidateFreq = sketch.frequency(candidateKey);
-        //int candWeightScaled = DoubleMath.log2((candWeight * 1.0), RoundingMode.FLOOR);
-        int candWeightScaled = (int) Math.round(Math.log(candWeight * 1.0));
-        long candidateTotal = candidateFreq * Math.max(candWeightScaled, 1);
-
-        long victimFreq = sketch.frequency(victimKey);
-        //int victimWeightScaled = DoubleMath.log2((victimWeight * 1.0), RoundingMode.FLOOR);
-        int victimWeightScaled = (int) Math.round(Math.log(victimFreq * 1.0));
-        long victimTotal = victimFreq * Math.max(victimWeightScaled, 1);
-
-        if (candidateFreq * candWeight > victimFreq * victimWeight) {
-            policyStats.recordAdmission();
-            return true;
-        }
-        policyStats.recordRejection();
-        return false;
+    @Override
+    public boolean admit(long candidateKey, long victimKey) {
+        return true;
     }
 
     @Override
-    public boolean admit(long candidateKey, long victimKey) {
+    public boolean admit(long candidateKey, int candidateWeight, long victimKey, int victimWeight) {
         sketch.reportMiss();
 
         long candidateFreq = sketch.frequency(candidateKey);
         long victimFreq = sketch.frequency(victimKey);
         if (candidateFreq > victimFreq) {
+            policyStats.recordAdmission();
+            return true;
+        } else if (candidateFreq == victimFreq && candidateWeight < victimWeight) {
             policyStats.recordAdmission();
             return true;
         }
