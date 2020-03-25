@@ -16,3 +16,4 @@ target
 **/replay_pid*.log
 **/caffeine.log
 simulator/src/main/resources/application.conf
+simulator/src/main/resources/com/github/benmanes/caffeine/cache/simulator/parser/snia/cambridge
