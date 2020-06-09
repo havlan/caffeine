@@ -17,10 +17,12 @@ public class SecondaryAdmittor implements Admittor {
     private final BasicSettings settings;
     private final PolicyStats policyStats;
     private final Frequency sketch;
+    private final boolean flipBooleanBasedOnCost;
 
     public SecondaryAdmittor(Config config, PolicyStats policyStats) {
         this.settings = new BasicSettings(config);
         this.policyStats = policyStats;
+        this.flipBooleanBasedOnCost = settings.isCost();
         this.sketch = makeSketch(config);
     }
 
@@ -78,9 +80,18 @@ public class SecondaryAdmittor implements Admittor {
         if (candidateFreq > victimFreq) {
             policyStats.recordAdmission();
             return true;
-        } else if (candidateFreq == victimFreq && candidateWeight < victimWeight) {
-            policyStats.recordAdmission();
-            return true;
+        } else if (candidateFreq == victimFreq) {
+            if (flipBooleanBasedOnCost) {
+                if (candidateWeight > victimWeight) {
+                    policyStats.recordAdmission();
+                    return true;
+                }
+            } else {
+                if (candidateWeight < victimWeight) {
+                    policyStats.recordAdmission();
+                    return true;
+                }
+            }
         }
         policyStats.recordRejection();
         return false;

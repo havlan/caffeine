@@ -15,10 +15,6 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.product;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
-
-import java.util.Set;
-
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.RemovalCause;
@@ -30,6 +26,10 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.typesafe.config.Config;
 
+import java.util.Set;
+
+import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
+
 /**
  * Caffeine cache implementation.
  *
@@ -38,14 +38,13 @@ import com.typesafe.config.Config;
 public final class CaffeinePolicy implements Policy {
   private final Cache<Long, AccessEvent> cache;
   private final PolicyStats policyStats;
-
   public CaffeinePolicy(Config config) {
     policyStats = new PolicyStats("product.Caffeine");
     BasicSettings settings = new BasicSettings(config);
     cache = Caffeine.newBuilder()
         .removalListener((Long key, AccessEvent value, RemovalCause cause) ->
             policyStats.recordEviction())
-        .weigher((key, value) -> value.weight())
+        .weigher((key, value) -> (settings.isCost() ? 1 : value.weight()))
         .initialCapacity(settings.maximumSize())
         .maximumWeight(settings.maximumSize())
         .executor(Runnable::run)

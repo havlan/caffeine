@@ -15,16 +15,16 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.parser.snia.cambridge;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
+import com.github.benmanes.caffeine.cache.simulator.parser.TextTraceReader;
+import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
+import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
+import com.google.common.collect.Sets;
 
 import java.io.IOException;
 import java.util.Set;
 import java.util.stream.Stream;
 
-import com.github.benmanes.caffeine.cache.simulator.parser.TextTraceReader;
-import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
-import com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic;
-import com.google.common.collect.Sets;
+import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 
 /**
  * A reader for the SNIA MSR Cambridge trace files provided by
@@ -38,10 +38,12 @@ public final class CambridgeTraceReader extends TextTraceReader {
     super(filePath);
   }
 
+
   @Override
-  public Set<Characteristic> characteristics() {
+  public Set<Policy.Characteristic> characteristics() {
     return Sets.immutableEnumSet(WEIGHTED);
   }
+
 
   @Override
   public Stream<AccessEvent> events() throws IOException {
@@ -50,4 +52,12 @@ public final class CambridgeTraceReader extends TextTraceReader {
         .map(array -> AccessEvent.forKeyAndWeight(
             Long.parseLong(array[4]), Integer.parseInt(array[5])));
   }
+/*
+  @Override
+  public LongStream keys() throws IOException {
+    return lines()
+            .map(line -> line.split(","))
+            .map(array -> array[4])
+            .mapToLong(Long::parseLong);
+  }*/
 }

@@ -21,7 +21,6 @@ import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
 import com.github.benmanes.caffeine.cache.simulator.admission.TinyLfuBoostIncrement;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
-import com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.Sets;
@@ -50,6 +49,7 @@ public final class LinkedPolicy implements Policy {
   final int maximumSize;
   final Node sentinel;
   int currentSize;
+  private final boolean isCost;
 
   public LinkedPolicy(Admission admission, EvictionPolicy policy, Config config) {
     this.policyStats = new PolicyStats(admission.format("linked." + policy.label()));
@@ -57,6 +57,7 @@ public final class LinkedPolicy implements Policy {
     BasicSettings settings = new BasicSettings(config);
     this.data = new Long2ObjectOpenHashMap<>();
     this.maximumSize = settings.maximumSize();
+    this.isCost = settings.isCost();
     this.sentinel = new Node();
     this.policy = policy;
   }
@@ -91,13 +92,13 @@ public final class LinkedPolicy implements Policy {
     }
     if (old == null) {
       policyStats.recordWeightedMiss(weight);
-      if (weight > maximumSize) {
+      if (weight > maximumSize && !isCost) {
         policyStats.recordOperation();
         return;
       }
       Node node = new Node(key, weight, sentinel);
       data.put(key, node);
-      currentSize += node.weight;
+      currentSize += (isCost ? 1 : node.weight);
       node.appendToTail();
       evict(node);
     } else {
@@ -126,7 +127,7 @@ public final class LinkedPolicy implements Policy {
   }
 
   private void evictEntry(Node node) {
-    currentSize -= node.weight;
+    currentSize -= (isCost ? 1 : node.weight);
     data.remove(node.key);
     node.remove();
   }

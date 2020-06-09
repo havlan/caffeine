@@ -15,10 +15,6 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.product;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
-
-import java.util.Set;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
@@ -28,6 +24,10 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.typesafe.config.Config;
+
+import java.util.Set;
+
+import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 
 /**
  * Guava cache implementation.
@@ -44,7 +44,7 @@ public final class GuavaPolicy implements Policy {
     cache = CacheBuilder.newBuilder()
         .maximumWeight(settings.maximumSize())
         .initialCapacity(settings.maximumSize())
-        .weigher((Long key, AccessEvent value) -> value.weight())
+        .weigher((Long key, AccessEvent value) -> (settings.isCost() ? 1 : value.weight()))
         .removalListener(notification -> policyStats.recordEviction())
         .build();
   }

@@ -10,15 +10,19 @@ public class ThresholdAdmittor implements Admittor {
 
     private final PolicyStats policyStats;
     private final BasicSettings settings;
-    private int currentWeightThreshold = 0;
+    private final boolean flipBooleanBasedOnCost;
+    private double currentWeightThreshold = 0;
     private long sumOfWeights = 0L;
-    private int stuck = 1;
-    private int x = 15;
+    private double stuck = 1.0;
+    private double x = 0.01;
 
     public ThresholdAdmittor(Config config, PolicyStats policyStats) {
         this.settings = new BasicSettings(config);
         this.policyStats = policyStats;
-        this.policyStats.setName(String.format("%s%d", this.policyStats.name(), x));
+        this.policyStats.setName(String.format("%s", this.policyStats.name()));
+        this.flipBooleanBasedOnCost = settings.isCost();
+        currentWeightThreshold = flipBooleanBasedOnCost ? Double.MIN_VALUE : Double.MAX_VALUE;
+
     }
     /*
     public static Set<Policy> policies(Config config) {
@@ -48,18 +52,36 @@ public class ThresholdAdmittor implements Admittor {
 
     @Override
     public boolean admit(long candidateKey, int candidateWeight, long victimKey, int victimWeight) {
-        if (candidateWeight > currentWeightThreshold) {
-            policyStats.recordAdmission();
-            sumOfWeights = sumOfWeights - victimWeight + candidateWeight;
-            currentWeightThreshold = (int) (currentWeightThreshold + (sumOfWeights / settings.maximumSize()) / 2);
-            stuck = 1;
-            return true;
+        if (flipBooleanBasedOnCost) {
+            if (candidateWeight > currentWeightThreshold) {
+                policyStats.recordAdmission();
+                sumOfWeights = sumOfWeights - victimWeight + candidateWeight;
+                stuck = 1.0;
+                currentWeightThreshold = getNewThreshold(sumOfWeights, stuck);
+                return true;
+            }
+            stuck -= x;
+        } else {
+            if (candidateWeight < currentWeightThreshold) {
+                policyStats.recordAdmission();
+                sumOfWeights = sumOfWeights - victimWeight + candidateWeight;
+                stuck = 1.0;
+                currentWeightThreshold = getNewThreshold(sumOfWeights, stuck);
+                return true;
+            }
+            stuck += x;
         }
-        stuck += x;
-
-        currentWeightThreshold = (int) (currentWeightThreshold + ((sumOfWeights * (100.0 - stuck)) / settings.maximumSize()) / 2);
+        currentWeightThreshold = getNewThreshold(sumOfWeights, stuck);
         policyStats.recordRejection();
         return false;
+    }
+
+    public double getNewThreshold(final long sumOfWeights, final double tip) {
+        double adjusted = sumOfWeights * tip;
+        double avgAdjusted = adjusted / settings.maximumSize();
+        double sumAdjusted = currentWeightThreshold + avgAdjusted;
+        currentWeightThreshold = sumAdjusted / 2.0;
+        return currentWeightThreshold;
     }
 
     public static final class ThresholdAdmittorSettings extends BasicSettings {

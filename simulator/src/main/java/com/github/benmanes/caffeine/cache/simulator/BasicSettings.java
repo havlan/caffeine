@@ -15,20 +15,20 @@
  */
 package com.github.benmanes.caffeine.cache.simulator;
 
-import static com.google.common.base.Preconditions.checkState;
-import static java.util.Locale.US;
-import static java.util.Objects.requireNonNull;
-import static java.util.stream.Collectors.toSet;
-
-import java.util.List;
-import java.util.Set;
-
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.membership.FilterType;
 import com.github.benmanes.caffeine.cache.simulator.parser.TraceFormat;
 import com.github.benmanes.caffeine.cache.simulator.report.ReportFormat;
 import com.google.common.base.CaseFormat;
 import com.typesafe.config.Config;
+
+import java.util.List;
+import java.util.Set;
+
+import static com.google.common.base.Preconditions.checkState;
+import static java.util.Locale.US;
+import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.toSet;
 
 /**
  * The simulator's configuration. A policy can extend this class as a convenient way to extract
@@ -82,6 +82,9 @@ public class BasicSettings {
 
   public boolean isFiles() {
     return config().getString("source").equals("files");
+  }
+  public boolean isCost() {
+    return config().getString("cost").equals("yes");
   }
 
   public boolean isSynthetic() {

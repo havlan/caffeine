@@ -15,16 +15,6 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.product;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
-
-import java.util.Set;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-
-import org.cache2k.Cache;
-import org.cache2k.Cache2kBuilder;
-import org.cache2k.event.CacheEntryEvictedListener;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
@@ -32,6 +22,15 @@ import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.typesafe.config.Config;
+import org.cache2k.Cache;
+import org.cache2k.Cache2kBuilder;
+import org.cache2k.event.CacheEntryEvictedListener;
+
+import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
 
 /**
  * Cache2k implementation.
@@ -53,7 +52,7 @@ public final class Cache2kPolicy implements Policy {
         (cache, entry) -> policyStats.recordEviction();
     BasicSettings settings = new BasicSettings(config);
     cache = Cache2kBuilder.of(Long.class, AccessEvent.class)
-        .weigher((Long key, AccessEvent value) -> value.weight())
+        .weigher((Long key, AccessEvent value) -> (settings.isCost() ? 1 : value.weight()))
         .maximumWeight(settings.maximumSize())
         .addListener(listener)
         .strictEviction(true)

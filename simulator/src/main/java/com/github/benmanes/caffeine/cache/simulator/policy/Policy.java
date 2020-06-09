@@ -15,9 +15,9 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy;
 
-import java.util.Set;
-
 import com.google.common.collect.ImmutableSet;
+
+import java.util.Set;
 
 /**
  * A cache that implements a page replacement policy.
@@ -26,7 +26,8 @@ import com.google.common.collect.ImmutableSet;
  */
 public interface Policy {
   enum Characteristic {
-    WEIGHTED
+    WEIGHTED,
+
   }
 
   /** The event features that this policy supports. */

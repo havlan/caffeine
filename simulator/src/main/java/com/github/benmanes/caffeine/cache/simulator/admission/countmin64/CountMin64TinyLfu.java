@@ -42,6 +42,7 @@ public final class CountMin64TinyLfu implements Frequency {
   int size;
 
   public CountMin64TinyLfu(Config config) {
+    System.out.println("Using CountMin64TinyLfu");
     BasicSettings settings = new BasicSettings(config);
     sketch = new CountMin64(settings.tinyLfu().countMin64().eps(),
         settings.tinyLfu().countMin64().confidence(), settings.randomSeed());

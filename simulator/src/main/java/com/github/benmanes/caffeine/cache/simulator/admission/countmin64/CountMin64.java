@@ -13,9 +13,9 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.admission.countmin64;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
 import java.util.Random;
+
+import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * Count-Min Sketch data structure with optional conservative addition.

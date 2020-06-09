@@ -3,6 +3,7 @@ package com.github.benmanes.caffeine.cache.simulator.policy.sampled;
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admission;
 import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
+import com.github.benmanes.caffeine.cache.simulator.admission.TinyLfuBoostIncrement;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
@@ -43,6 +44,7 @@ public final class WeightedSampledPolicy implements Policy {
     final Random random;
     ArrayList<Node> dynamicTable;
     int currentSize;
+    private final boolean isCost;
 
 
     long tick;
@@ -56,6 +58,7 @@ public final class WeightedSampledPolicy implements Policy {
         this.random = new Random(settings.randomSeed());
         this.data = new Long2ObjectOpenHashMap<>();
         this.maximumSize = settings.maximumSize();
+        this.isCost = settings.isCost();
         this.sampleSize = settings.sampleSize();
         this.dynamicTable = new ArrayList<>();
         this.policy = policy;
@@ -87,21 +90,22 @@ public final class WeightedSampledPolicy implements Policy {
         long key = event.key();
         final int weight = event.weight();
         Node node = data.get(key);
-        admittor.record(key);
-        long now = ++tick;
-        if (now % 5 == -1) {
-            System.out.printf("State for %s: {currentSize=%d, data.size=%d, hitRate=%f}%n", policyStats.name(), currentSize, data.size(), policyStats.hitRate());
+        if (!admittor.getClass().equals(TinyLfuBoostIncrement.class)){
+            admittor.record(key);
+        } else {
+            admittor.record(key, (int) Math.max(1, Math.log(event.weight()*1.0/ 512)));
         }
+        long now = ++tick;
         if (node == null) {
-            if (weight > maximumSize) {
+            policyStats.recordWeightedMiss(weight);
+            if (weight > maximumSize && !isCost) {
                 policyStats.recordOperation();
                 return;
             }
             node = new Node(key, data.size(), now, weight);
             policyStats.recordOperation();
-            policyStats.recordWeightedMiss(weight);
             dynamicTable.add(node);
-            currentSize += weight;
+            currentSize += (isCost ? 1 : weight);
             /*
             try {
                 dynamicTable[node.index] = node;
@@ -133,7 +137,7 @@ public final class WeightedSampledPolicy implements Policy {
                 policyStats.recordEviction();
 
 
-                if (admittor.admit(candidate.key, victim.key)) {
+                if (admittor.admit(candidate.key,candidate.weight, victim.key, victim.weight)) {
                     removeFromTable(victim);
                     data.remove(victim.key);
                 } else {
@@ -148,7 +152,7 @@ public final class WeightedSampledPolicy implements Policy {
      * Removes the node from the table and adds the index to the free list.
      */
     private void removeFromTable(Node node) {
-        currentSize -= node.weight;
+        currentSize -= (isCost ? 1 : node.weight);
         dynamicTable.remove(node);
     }
 

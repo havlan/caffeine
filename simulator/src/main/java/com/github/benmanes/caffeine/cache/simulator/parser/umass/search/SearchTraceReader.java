@@ -80,6 +80,7 @@ public final class SearchTraceReader extends TextTraceReader {//implements Trace
     public Stream<AccessEvent> events() throws IOException {
         return lines()
                 .map(line -> line.split(","))
+                .filter(line -> line.length > 4)
                 .filter(line -> Character.toLowerCase(line[3].charAt(0)) != 'w')
                 .map(array -> AccessEvent.forKeyAndWeight(
                         Long.parseLong(array[1]), IntMath.divide(Integer.parseInt(array[2]), BLOCK_SIZE, RoundingMode.UP)));

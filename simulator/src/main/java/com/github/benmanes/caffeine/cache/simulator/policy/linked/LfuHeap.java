@@ -24,6 +24,10 @@ import static java.util.Locale.US;
 import static java.util.stream.Collectors.toSet;
 
 public class LfuHeap implements Policy {
+
+    static final int WARMUP_TIME = 10_000;
+    static final int LARGE_ITEM_SIZE = 10_000;
+
     final PolicyStats policyStats;
     final Long2ObjectMap<Node> data;
     AgingPolicy policy;
@@ -32,6 +36,7 @@ public class LfuHeap implements Policy {
     final Admittor admittor;
     int currentWeightedSize = 0;
     int elementsInPq = 0;
+    private final boolean isCost;
 
 
     public LfuHeap(Admission admission, AgingPolicy policy, Config config) {
@@ -40,6 +45,7 @@ public class LfuHeap implements Policy {
         this.admittor = admission.from(config, policyStats);
         this.data = new Long2ObjectOpenHashMap<>();
         this.maximumSize = settings.maximumSize();
+        this.isCost = settings.isCost();
         this.pQueue = new PriorityQueue<>(maximumSize, Comparator.comparingInt(a -> a.frequency));
         this.policy = policy;
     }
@@ -80,23 +86,31 @@ public class LfuHeap implements Policy {
     //         One, Skip, None;
 
     private void ageNodes() {
-        if (now > 10_000 && now % 100 == 0) {
+        if (now > WARMUP_TIME && now % 100 == 0) {
             Iterator<Node> it = pQueue.iterator();
             switch (policy) {
                 case One:
-                    it.forEachRemaining(n -> n.frequency--);
+                    it.forEachRemaining(n -> {
+                        if (n.frequency-- > 0) {
+                            n.frequency = n.frequency--;
+                        }
+
+                    });
                     break;
                 case Boost:
                     it.forEachRemaining(n -> {
-                        n.frequency -= getDecrement(n.weight);
+                        if (n.frequency - getDecrement(n.weight) > 0) {
+                            n.frequency -= getDecrement(n.weight);
+                        }
                     });
                     break;
                 case Skip:
                     it.forEachRemaining(n -> {
-                        if (!(n.weight > 10_000)) {
+                        if (n.weight < LARGE_ITEM_SIZE && n.frequency-- > 0) {
                             n.frequency--;
                         }
                     });
+                    break;
                 case None:
                     break;
             }
@@ -114,7 +128,7 @@ public class LfuHeap implements Policy {
 
     private void onMiss(AccessEvent event) {
         policyStats.recordWeightedMiss(event.weight());
-        if (event.weight() > maximumSize) {
+        if (event.weight() > maximumSize && !isCost) {
             policyStats.recordOperation();
             return;
         }
@@ -123,7 +137,7 @@ public class LfuHeap implements Policy {
         Node node = new Node(key, weight, getStartingFrequency());
         boolean addOperation = pQueue.offer(node);
         if (addOperation) {
-            currentWeightedSize += event.weight();
+            currentWeightedSize += (isCost ? 1 : event.weight());
             data.put(key, node);
             elementsInPq++;
             evict(node);
@@ -142,11 +156,11 @@ public class LfuHeap implements Policy {
                     victim = pQueue.poll();
                     assert victim != null;
                     data.remove(victim.key);
-                    currentWeightedSize -= victim.weight;
+                    currentWeightedSize -= (isCost ? 1 : victim.weight);
                 } else {
                     pQueue.remove(candidate);
                     data.remove(candidate.key);
-                    currentWeightedSize -= candidate.weight;
+                    currentWeightedSize -= (isCost ? 1 : candidate.weight);
                 }
                 policyStats.recordEviction();
                 elementsInPq--;
@@ -159,7 +173,6 @@ public class LfuHeap implements Policy {
         int lowerBase = 1;
         if (pQueue.peek() != null) {
             lowerBase = pQueue.peek().frequency;
-            //lowerBase = lowerBase + 0; // do something random here?
         }
         return lowerBase;
     }

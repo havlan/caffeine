@@ -15,12 +15,12 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.admission.countmin4;
 
-import static com.google.common.base.Preconditions.checkArgument;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.admission.Frequency;
 import com.google.common.math.IntMath;
 import com.typesafe.config.Config;
+
+import static com.google.common.base.Preconditions.checkArgument;
 
 /**
  * A probabilistic multiset for estimating the popularity of an element within a time window. The

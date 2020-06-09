@@ -21,7 +21,6 @@ import com.github.benmanes.caffeine.cache.simulator.admission.Admittor;
 import com.github.benmanes.caffeine.cache.simulator.admission.TinyLfuBoostIncrement;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
-import com.github.benmanes.caffeine.cache.simulator.policy.Policy.KeyOnlyPolicy;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.Sets;
@@ -51,6 +50,7 @@ public final class FrequentlyUsedPolicy implements Policy {
     final Admittor admittor;
     final int maximumSize;
     int currentWeightedSize;
+    private final boolean isCost;
 
 
     public FrequentlyUsedPolicy(Admission admission, EvictionPolicy policy, Config config) {
@@ -59,10 +59,10 @@ public final class FrequentlyUsedPolicy implements Policy {
         BasicSettings settings = new BasicSettings(config);
         this.data = new Long2ObjectOpenHashMap<>();
         this.maximumSize = settings.maximumSize();
+        this.isCost = settings.isCost();
         this.policy = requireNonNull(policy);
         this.freq0 = new FrequencyNode();
         this.currentWeightedSize = 0;
-        System.out.printf("FrequentlyUsedPolicy with policy=%s and admittor=%s%n", policy.toString(), admittor.toString());
     }
 
     /**
@@ -80,7 +80,6 @@ public final class FrequentlyUsedPolicy implements Policy {
         return Sets.immutableEnumSet(WEIGHTED);
     }
 
-    int i=0;
     @Override
     public void record(AccessEvent event) {
         policyStats.recordOperation();
@@ -184,7 +183,7 @@ public final class FrequentlyUsedPolicy implements Policy {
      */
     private void onMiss(AccessEvent event) {
         policyStats.recordWeightedMiss(event.weight());
-        if (event.weight() > maximumSize) {
+        if (event.weight() > maximumSize && !isCost) {
             policyStats.recordOperation();
             return;
         }
@@ -196,7 +195,7 @@ public final class FrequentlyUsedPolicy implements Policy {
         Node node = new Node(key, event.weight(), freq1);
         //policyStats.recordMiss();
         //System.out.printf("Added with weight %d%n", event.weight());
-        currentWeightedSize += event.weight();
+        currentWeightedSize += (isCost ? 1 : event.weight());
         data.put(key, node);
         node.append();
         evict(node);
@@ -247,7 +246,7 @@ public final class FrequentlyUsedPolicy implements Policy {
      * Removes the entry.
      */
     private void evictEntry(Node node) {
-        currentWeightedSize -= node.weight;
+        currentWeightedSize -= (isCost ? 1 : node.weight);
         data.remove(node.key);
         node.remove();
         if (node.freq.isEmpty()) {

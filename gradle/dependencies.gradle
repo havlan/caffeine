@@ -55,6 +55,7 @@ ext {
     nullaway: '0.7.9',
     ohc: '0.6.1',
     slf4j: '1.7.30',
+    smile: "2.1.1",
     tcache: '2.0.1',
     stream: '2.9.8',
     univocityParsers: '2.8.4',
@@ -95,7 +96,7 @@ ext {
   ]
 
   libraries = [
-    akka: "com.typesafe.akka:akka-actor_2.12:${versions.akka}",
+    akka: "com.typesafe.akka:akka-actor_2.13:${versions.akka}",
     cache2k: "org.cache2k:cache2k-core:${versions.cache2k}",
     checkerAnnotations: "org.checkerframework:checker-qual:${versions.checkerFramework}",
     collision: "systems.comodal:collision:${versions.collision}",
@@ -133,6 +134,8 @@ ext {
     ohc: "org.caffinitas.ohc:ohc-core-j8:${versions.ohc}",
     slf4jNop: "org.slf4j:slf4j-nop:${versions.slf4j}",
     tcache: "com.trivago:triava:${versions.tcache}",
+    smile: "com.github.haifengl:smile-core:${versions.smile}",
+    smilePlot: "com.github.haifengl:smile-plot:${versions.smile}",
     stream: "com.clearspring.analytics:stream:${versions.stream}",
     univocityParsers: "com.univocity:univocity-parsers:${versions.univocityParsers}",
     ycsb: "site.ycsb:core:${versions.ycsb}",

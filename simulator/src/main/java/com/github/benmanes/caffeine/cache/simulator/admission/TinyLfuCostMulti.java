@@ -39,12 +39,14 @@ public final class TinyLfuCostMulti implements Admittor {
     private final PolicyStats policyStats;
     private final Frequency sketch;
     private final Random random;
+    private final boolean isCost;
 
     public TinyLfuCostMulti(Config config, PolicyStats policyStats) {
         this.policyStats = policyStats;
         this.sketch = makeSketch(config);
         BasicSettings settings = new BasicSettings(config);
         this.random = new Random(settings.randomSeed());
+        this.isCost = settings.isCost();
     }
 
     private Frequency makeSketch(Config config) {
@@ -92,18 +94,24 @@ public final class TinyLfuCostMulti implements Admittor {
         sketch.reportMiss();
 
         long candidateFreq = sketch.frequency(candidateKey);
-        //int candWeightScaled = DoubleMath.log2((candWeight * 1.0), RoundingMode.FLOOR);
         int candWeightScaled = (int) Math.round(Math.log(candWeight * 1.0));
         long candidateTotal = candidateFreq * Math.max(candWeightScaled, 1);
 
         long victimFreq = sketch.frequency(victimKey);
-        //int victimWeightScaled = DoubleMath.log2((victimWeight * 1.0), RoundingMode.FLOOR);
         int victimWeightScaled = (int) Math.round(Math.log(victimFreq * 1.0));
         long victimTotal = victimFreq * Math.max(victimWeightScaled, 1);
 
-        if (candidateFreq * candWeight > victimFreq * victimWeight) {
-            policyStats.recordAdmission();
-            return true;
+        if (isCost) {
+
+            if (candidateFreq * candWeight > victimFreq * victimWeight) {
+                policyStats.recordAdmission();
+                return true;
+            }
+        } else {
+            if (candidateFreq * (1.0/candWeight) > victimFreq * (1.0/victimWeight)){
+                policyStats.recordAdmission();
+                return true;
+            }
         }
         policyStats.recordRejection();
         return false;

@@ -10,10 +10,8 @@ import com.github.benmanes.caffeine.cache.simulator.admission.perfect.PerfectFre
 import com.github.benmanes.caffeine.cache.simulator.admission.table.RandomRemovalFrequencyTable;
 import com.github.benmanes.caffeine.cache.simulator.admission.tinycache.TinyCacheAdapter;
 import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
-import com.google.common.math.DoubleMath;
 import com.typesafe.config.Config;
 
-import java.math.RoundingMode;
 import java.util.Random;
 
 /*
@@ -97,9 +95,7 @@ public final class TinyLfuBoostIncrement implements Admittor {
         sketch.reportMiss();
 
         long candidateFreq = sketch.frequency(candidateKey);
-        long candidateTotal = candidateFreq * DoubleMath.log2((candWeight * 1.0), RoundingMode.DOWN);
         long victimFreq = sketch.frequency(victimKey);
-        long victimTotal = victimFreq * DoubleMath.log2((victimWeight * 1.0), RoundingMode.DOWN);
 
         if (candidateFreq > victimFreq) {
             policyStats.recordAdmission();

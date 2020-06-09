@@ -15,15 +15,6 @@
  */
 package com.github.benmanes.caffeine.cache.simulator.policy.product;
 
-import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
-import static com.google.common.base.Preconditions.checkState;
-
-import java.util.Set;
-
-import org.elasticsearch.common.cache.Cache;
-import org.elasticsearch.common.cache.Cache.CacheStats;
-import org.elasticsearch.common.cache.CacheBuilder;
-
 import com.github.benmanes.caffeine.cache.simulator.BasicSettings;
 import com.github.benmanes.caffeine.cache.simulator.policy.AccessEvent;
 import com.github.benmanes.caffeine.cache.simulator.policy.Policy;
@@ -31,6 +22,14 @@ import com.github.benmanes.caffeine.cache.simulator.policy.PolicyStats;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.typesafe.config.Config;
+import org.elasticsearch.common.cache.Cache;
+import org.elasticsearch.common.cache.Cache.CacheStats;
+import org.elasticsearch.common.cache.CacheBuilder;
+
+import java.util.Set;
+
+import static com.github.benmanes.caffeine.cache.simulator.policy.Policy.Characteristic.WEIGHTED;
+import static com.google.common.base.Preconditions.checkState;
 
 /**
  * ElasticSearch's LRU cache.
@@ -47,7 +46,7 @@ public final class ElasticSearchPolicy implements Policy {
     cache = CacheBuilder.<Long, AccessEvent>builder()
         .removalListener(notification -> policyStats.recordEviction())
         .setMaximumWeight(settings.maximumSize())
-        .weigher((key, value) -> value.weight())
+        .weigher((key, value) -> (settings.isCost() ? 1 : value.weight()))
         .build();
   }
 
